@@ -1,0 +1,319 @@
+package com.nexttodo.app
+
+import android.content.Intent
+import android.os.Bundle
+import android.view.Window
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.lifecycle.ViewModelProvider
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
+import androidx.lifecycle.Lifecycle
+import java.time.LocalDate
+
+class MainActivity : ComponentActivity() {
+    private var timerRequests by mutableIntStateOf(0)
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        val model = ViewModelProvider(this)[EventViewModel::class.java]
+        val timetable = ViewModelProvider(this)[TimetableViewModel::class.java]
+        val settings = AppSettings(applicationContext)
+        handleTimerRequest(intent)
+        setContent {
+            var theme by remember { mutableStateOf(settings.theme) }
+            val dark = when (theme) {
+                AppTheme.SYSTEM -> isSystemInDarkTheme()
+                AppTheme.LIGHT -> false
+                AppTheme.DARK -> true
+            }
+            MaterialTheme(colorScheme = if (dark) DarkColors else LightColors) {
+                NextToDo(model, timetable, settings, lifecycle, theme, dark, window, timerRequests) {
+                    settings.theme = it
+                    theme = it
+                }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleTimerRequest(intent)
+    }
+
+    private fun handleTimerRequest(intent: Intent) {
+        if (intent.getBooleanExtra(PomodoroTimer.OPEN_POMODORO, false)) {
+            timerRequests += 1
+            intent.removeExtra(PomodoroTimer.OPEN_POMODORO)
+        }
+    }
+}
+
+private val LightColors = lightColorScheme(
+    primary = Color(0xFF006BC4),
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFE7F2FF),
+    onPrimaryContainer = Color(0xFF163B5D),
+    secondary = Color(0xFF345D81),
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFFDEEEFF),
+    onSecondaryContainer = Color(0xFF183E60),
+    background = Color(0xFFF5F8FC),
+    surface = Color.White,
+    onBackground = Color(0xFF182B3D),
+    onSurface = Color(0xFF182B3D),
+    surfaceVariant = Color(0xFFE8EFF7),
+    onSurfaceVariant = Color(0xFF475F75),
+    outline = Color(0xFF71869A),
+    outlineVariant = Color(0xFFC9D9E8),
+    surfaceContainerHigh = Color(0xFFE9F1FA),
+)
+
+private val DarkColors = darkColorScheme(
+    primary = Color(0xFF79BCFF),
+    onPrimary = Color(0xFF062845),
+    primaryContainer = Color(0xFF20394E),
+    onPrimaryContainer = Color(0xFFD5EBFF),
+    secondary = Color(0xFFA8C9E8),
+    onSecondary = Color(0xFF14344F),
+    secondaryContainer = Color(0xFF243E54),
+    onSecondaryContainer = Color(0xFFD9EBFB),
+    background = Color(0xFF101B26),
+    surface = Color(0xFF182736),
+    onBackground = Color(0xFFE6EFF7),
+    onSurface = Color(0xFFE6EFF7),
+    surfaceVariant = Color(0xFF213547),
+    onSurfaceVariant = Color(0xFFBACEE0),
+    outline = Color(0xFF879EB2),
+    outlineVariant = Color(0xFF3D556A),
+    surfaceContainerHigh = Color(0xFF233548),
+)
+
+private enum class Tab(val label: String, val title: String, val icon: Int) {
+    DAILY("Today", "每日提醒", R.drawable.tab_today),
+    SCHEDULE("Timetable", "课表速看", R.drawable.tab_timetable),
+    ADD("Add", "添加事件", R.drawable.tab_add),
+    PROFILE("My", "我的", R.drawable.tab_my),
+}
+
+@Composable
+private fun NextToDo(
+    model: EventViewModel,
+    timetable: TimetableViewModel,
+    settings: AppSettings,
+    lifecycle: Lifecycle,
+    theme: AppTheme,
+    dark: Boolean,
+    window: Window,
+    timerRequests: Int,
+    onThemeChange: (AppTheme) -> Unit,
+) {
+    var tab by rememberSaveable { mutableStateOf(Tab.DAILY) }
+    var detailId by rememberSaveable { mutableStateOf<String?>(null) }
+    var showingPomodoro by rememberSaveable { mutableStateOf(false) }
+    var selectedDate by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
+    val selectedDay = LocalDate.parse(selectedDate)
+    val detail = model.events.firstOrNull { it.id == detailId }
+    val showingToday = tab == Tab.DAILY && detail == null
+    SideEffect {
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = if (showingToday) dark else !dark
+            isAppearanceLightNavigationBars = !dark
+        }
+    }
+    val snackbar = remember { SnackbarHostState() }
+    LaunchedEffect(model.message) {
+        val message = model.message ?: return@LaunchedEffect
+        snackbar.showSnackbar(message)
+        model.dismissMessage()
+    }
+    LaunchedEffect(model.savedEventId) {
+        val savedId = model.savedEventId ?: return@LaunchedEffect
+        selectedDate = (model.events.firstOrNull { it.id == savedId }?.calendarDay ?: LocalDate.now()).toString()
+        detailId = null
+        tab = Tab.DAILY
+        model.acknowledgeSave()
+    }
+    LaunchedEffect(timerRequests) {
+        if (timerRequests > 0) {
+            detailId = null
+            showingPomodoro = true
+            tab = Tab.PROFILE
+        }
+    }
+    BackHandler(tab != Tab.DAILY || detailId != null) {
+        if (tab == Tab.PROFILE && showingPomodoro) {
+            showingPomodoro = false
+        } else {
+            detailId = null
+            tab = Tab.DAILY
+        }
+    }
+
+    Scaffold(
+        modifier = Modifier.background(
+            if (showingToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background
+        )
+            .windowInsetsPadding(
+                WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
+            ),
+        containerColor = MaterialTheme.colorScheme.background,
+        snackbarHost = { SnackbarHost(snackbar) },
+        bottomBar = {
+            BottomTabs(tab, dark) {
+                detailId = null
+                showingPomodoro = false
+                tab = it
+            }
+        },
+    ) { padding ->
+        if (showingToday) {
+            Box(Modifier.fillMaxSize().padding(padding)) {
+                TodayScreen(
+                    selectedDay = selectedDay,
+                    onDayChange = { selectedDate = it.toString() },
+                    model = model,
+                    onOpen = { detailId = it.id },
+                    onAdd = {
+                        model.clearDraft(selectedDay)
+                        tab = Tab.ADD
+                    },
+                )
+            }
+            return@Scaffold
+        }
+        Column(
+            Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp),
+        ) {
+            Spacer(Modifier.height(20.dp))
+            Text(
+                when {
+                    detail != null && tab == Tab.DAILY -> "事件详情"
+                    tab == Tab.ADD && model.events.any { it.id == model.draft.id } -> "编辑事件"
+                    tab == Tab.PROFILE && showingPomodoro -> "番茄钟"
+                    else -> tab.title
+                },
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(Modifier.height(16.dp))
+            if (model.loadingFailed) {
+                Button(onClick = model::reload, enabled = !model.busy) { Text("重新读取事件") }
+                return@Column
+            }
+            when (tab) {
+                Tab.DAILY -> {
+                    if (detail != null) EventDetails(
+                        detail,
+                        onBack = { detailId = null },
+                        onEdit = {
+                            if (!model.busy) {
+                                model.edit(detail)
+                                detailId = null
+                                tab = Tab.ADD
+                            }
+                        },
+                    )
+                }
+                Tab.SCHEDULE -> TimetableScreen(timetable)
+                Tab.ADD -> EventEditor(
+                    model.draft,
+                    enabled = !model.busy,
+                    onChange = model::updateDraft,
+                    onSave = model::save,
+                    onReset = { model.clearDraft(selectedDay) },
+                )
+                Tab.PROFILE -> if (showingPomodoro) {
+                    PomodoroScreen(lifecycle) { showingPomodoro = false }
+                } else {
+                    ProfileSettings(settings, lifecycle, theme, onThemeChange) { showingPomodoro = true }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BottomTabs(selected: Tab, dark: Boolean, onSelect: (Tab) -> Unit) {
+    val activeColor = MaterialTheme.colorScheme.primary
+    val inactiveColor = if (dark) Color(0xFFADB9BF) else Color(0xFF707070)
+    Surface(color = MaterialTheme.colorScheme.surface) {
+        Row(
+            Modifier.fillMaxWidth()
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
+                .selectableGroup()
+                .padding(horizontal = 8.dp)
+        ) {
+            Tab.entries.forEach { tab ->
+                val active = selected == tab
+                Box(
+                    Modifier.weight(1f).height(68.dp)
+                        .selectable(selected = active, role = Role.Tab, onClick = { onSelect(tab) }),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    val contentColor = if (active) activeColor else inactiveColor
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            painter = painterResource(tab.icon),
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp),
+                            tint = contentColor,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            tab.label,
+                            color = contentColor,
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,13 @@
+<resources>
+    <style name="Theme.NextToDo" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowBackground">#F5F8FC</item>
+        <item name="android:colorAccent">#006BC4</item>
+    </style>
+    <style name="Theme.NextToDo.Dialog.Light" parent="android:style/Theme.Material.Light.Dialog.Alert">
+        <item name="android:colorAccent">#006BC4</item>
+    </style>
+    <style name="Theme.NextToDo.Dialog.Dark" parent="android:style/Theme.Material.Dialog.Alert">
+        <item name="android:colorAccent">#79BCFF</item>
+    </style>
+</resources>
