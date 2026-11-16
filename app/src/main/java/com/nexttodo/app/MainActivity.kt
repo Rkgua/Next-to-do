@@ -58,6 +58,7 @@ import java.time.LocalDate
 
 class MainActivity : ComponentActivity() {
     private var timerRequests by mutableIntStateOf(0)
+    private var eventRequest by mutableStateOf<Pair<Int, String>?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -65,7 +66,7 @@ class MainActivity : ComponentActivity() {
         val model = ViewModelProvider(this)[EventViewModel::class.java]
         val timetable = ViewModelProvider(this)[TimetableViewModel::class.java]
         val settings = AppSettings(applicationContext)
-        handleTimerRequest(intent)
+        handleNavigationIntent(intent)
         setContent {
             var theme by remember { mutableStateOf(settings.theme) }
             val dark = when (theme) {
@@ -74,7 +75,7 @@ class MainActivity : ComponentActivity() {
                 AppTheme.DARK -> true
             }
             MaterialTheme(colorScheme = if (dark) DarkColors else LightColors) {
-                NextToDo(model, timetable, settings, lifecycle, theme, dark, window, timerRequests) {
+                NextToDo(model, timetable, settings, lifecycle, theme, dark, window, timerRequests, eventRequest) {
                     settings.theme = it
                     theme = it
                 }
@@ -84,13 +85,17 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        handleTimerRequest(intent)
+        handleNavigationIntent(intent)
     }
 
-    private fun handleTimerRequest(intent: Intent) {
+    private fun handleNavigationIntent(intent: Intent) {
         if (intent.getBooleanExtra(PomodoroTimer.OPEN_POMODORO, false)) {
             timerRequests += 1
             intent.removeExtra(PomodoroTimer.OPEN_POMODORO)
+        }
+        intent.getStringExtra(EventReminders.OPEN_EVENT)?.let { id ->
+            eventRequest = ((eventRequest?.first ?: 0) + 1) to id
+            intent.removeExtra(EventReminders.OPEN_EVENT)
         }
     }
 }
@@ -152,6 +157,7 @@ private fun NextToDo(
     dark: Boolean,
     window: Window,
     timerRequests: Int,
+    eventRequest: Pair<Int, String>?,
     onThemeChange: (AppTheme) -> Unit,
 ) {
     var tab by rememberSaveable { mutableStateOf(Tab.DAILY) }
@@ -185,6 +191,13 @@ private fun NextToDo(
             detailId = null
             showingPomodoro = true
             tab = Tab.PROFILE
+        }
+    }
+    LaunchedEffect(eventRequest) {
+        eventRequest?.let { (_, id) ->
+            detailId = id
+            showingPomodoro = false
+            tab = Tab.DAILY
         }
     }
     BackHandler(tab != Tab.DAILY || detailId != null) {
@@ -265,7 +278,9 @@ private fun NextToDo(
                 Tab.ADD -> EventEditor(
                     model.draft,
                     enabled = !model.busy,
+                    recognizing = model.recognizing,
                     onChange = model::updateDraft,
+                    onRecognize = model::recognizeImage,
                     onSave = model::save,
                     onReset = { model.clearDraft(selectedDay) },
                 )

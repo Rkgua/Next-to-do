@@ -15,12 +15,17 @@ import kotlinx.coroutines.withContext
 
 internal class EventViewModel(application: Application) : AndroidViewModel(application) {
     private val store = EventStore(application)
+    private val reminders = EventReminders(application)
+    private val settings = AppSettings(application)
+    private val recognition = DeepSeekImageRecognition(application)
 
     var events by mutableStateOf<List<Event>>(emptyList())
         private set
     var draft by mutableStateOf(newEvent())
         private set
     var busy by mutableStateOf(false)
+        private set
+    var recognizing by mutableStateOf(false)
         private set
     var loadingFailed by mutableStateOf(false)
         private set
@@ -34,7 +39,11 @@ internal class EventViewModel(application: Application) : AndroidViewModel(appli
     }
 
     fun reload() = write("无法读取本地事件", onFailure = { loadingFailed = true }) {
-        events = withContext(Dispatchers.IO) { store.readAll() }
+        events = withContext(Dispatchers.IO) {
+            store.readAll().also { current ->
+                runCatching { reminders.restore(current) }.onFailure(::logReminderFailure)
+            }
+        }
         loadingFailed = false
     }
 
@@ -54,6 +63,25 @@ internal class EventViewModel(application: Application) : AndroidViewModel(appli
         savedEventId = null
     }
 
+    fun recognizeImage(attachment: Attachment) {
+        if (busy) return
+        draft = draft.copy(originalImage = attachment)
+        val input = draft
+        write("图片识别失败，请检查网络后重试") {
+            recognizing = true
+            try {
+                draft = withContext(Dispatchers.IO) {
+                    val key = settings.readDeepSeekKey()
+                        ?: throw ImageRecognitionException("请先在「My」填写并保存 DeepSeek API 密钥")
+                    recognition.recognize(input, attachment, key)
+                }
+                message = "识别完成，请核对后保存"
+            } finally {
+                recognizing = false
+            }
+        }
+    }
+
     fun save() {
         val event = draft.copy(
             title = draft.title.trim(),
@@ -67,7 +95,9 @@ internal class EventViewModel(application: Application) : AndroidViewModel(appli
         val previous = events.firstOrNull { it.id == event.id }
         write("无法保存事件，请检查附件后重试") {
             val saved = withContext(Dispatchers.IO) {
-                store.save(event.copy(completed = previous?.completed ?: false), previous)
+                store.save(event.copy(completed = previous?.completed ?: false), previous).also {
+                    runCatching { reminders.update(previous, it) }.onFailure(::logReminderFailure)
+                }
             }
             events = if (previous == null) listOf(saved) + events
             else events.map { if (it.id == saved.id) saved else it }
@@ -77,8 +107,12 @@ internal class EventViewModel(application: Application) : AndroidViewModel(appli
     }
 
     fun complete(event: Event, completed: Boolean) = write("无法更新事件状态") {
-        withContext(Dispatchers.IO) { store.setCompleted(event.id, completed) }
-        events = events.map { if (it.id == event.id) it.copy(completed = completed) else it }
+        val updated = event.copy(completed = completed)
+        withContext(Dispatchers.IO) {
+            store.setCompleted(event.id, completed)
+            runCatching { reminders.update(event, updated) }.onFailure(::logReminderFailure)
+        }
+        events = events.map { if (it.id == event.id) updated else it }
     }
 
     fun movePending(id: String, targetId: String) {
@@ -107,11 +141,15 @@ internal class EventViewModel(application: Application) : AndroidViewModel(appli
             } catch (exception: Exception) {
                 android.util.Log.e("NextToDo", errorMessage, exception)
                 onFailure()
-                message = errorMessage
+                message = if (exception is ImageRecognitionException) exception.message else errorMessage
             } finally {
                 busy = false
             }
         }
+    }
+
+    private fun logReminderFailure(exception: Throwable) {
+        android.util.Log.e("NextToDo", "Unable to schedule event reminder", exception)
     }
 
     private fun newEvent(day: LocalDate = LocalDate.now()) = Event(id = UUID.randomUUID().toString(), day = day)

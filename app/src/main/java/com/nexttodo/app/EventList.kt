@@ -302,6 +302,7 @@ internal fun EventDetails(event: Event, onBack: () -> Unit, onEdit: () -> Unit) 
         if (event.description.isNotBlank()) Text(event.description)
         if (event.time.isNotBlank()) DetailValue("事件时间", eventTimeLabel(event.time))
         else event.day?.let { DetailValue("日期", it.format(dayFormat)) }
+        if (event.reminderEnabled && !event.completed) DetailValue("到点提醒", "已开启")
         event.fields.forEach { field ->
             when (field.type) {
                 FieldType.TEXT -> if (field.value.isNotBlank()) DetailValue(field.name, field.value)

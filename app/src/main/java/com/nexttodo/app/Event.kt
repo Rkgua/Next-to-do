@@ -3,6 +3,7 @@ package com.nexttodo.app
 import java.util.UUID
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.ZoneId
 
 enum class EventType(val label: String, val fields: List<String> = emptyList()) {
     GENERAL("普通"),
@@ -40,9 +41,14 @@ data class Event(
     val originalImage: Attachment? = null,
     val fields: List<EventField> = emptyList(),
     val day: LocalDate? = null,
+    val reminderEnabled: Boolean = false,
 ) {
     val calendarDay: LocalDate?
         get() = time.takeIf(String::isNotBlank)?.let { LocalDateTime.parse(it).toLocalDate() } ?: day
+
+    fun timeInMillis(): Long? = time.takeIf(String::isNotBlank)?.let {
+        LocalDateTime.parse(it).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    }
 
     fun withType(newType: EventType): Event {
         if (type == newType) return this

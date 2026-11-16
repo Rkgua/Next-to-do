@@ -7,7 +7,6 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.os.SystemClock
 import android.provider.Settings
 import androidx.core.app.NotificationCompat
@@ -130,15 +129,7 @@ internal class PomodoroTimer(private val context: Context) {
             alarms.cancel(alarmIntent)
             return
         }
-        try {
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarms.canScheduleExactAlarms()) {
-                alarms.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, elapsedDeadline, alarmIntent)
-                return
-            }
-        } catch (_: SecurityException) {
-            // The exact-alarm permission can be revoked while the timer is running.
-        }
-        alarms.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, elapsedDeadline, alarmIntent)
+        scheduleWhileIdle(alarms, AlarmManager.ELAPSED_REALTIME_WAKEUP, elapsedDeadline, alarmIntent)
     }
 
     private fun notifyFinished(phase: PomodoroPhase) {

@@ -37,9 +37,13 @@ internal class EventStore(private val context: Context) :
         db.execSQL("ALTER TABLE events ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0")
     }
 
-    fun readAll(): List<Event> = readableDatabase.query(
+    fun readAll(): List<Event> = readEvents()
+
+    fun findEvent(id: String): Event? = readEvents("id = ?", arrayOf(id)).firstOrNull()
+
+    private fun readEvents(selection: String? = null, args: Array<String>? = null): List<Event> = readableDatabase.query(
         "events", arrayOf("id", "completed", "details"),
-        null, null, null, null, "sort_order ASC, rowid DESC"
+        selection, args, null, null, "sort_order ASC, rowid DESC"
     ).use { cursor ->
         buildList {
             while (cursor.moveToNext()) {
@@ -53,6 +57,7 @@ internal class EventStore(private val context: Context) :
                         title = json.getString("title"),
                         description = json.getString("description"),
                         time = json.getString("time"),
+                        reminderEnabled = json.optBoolean("reminderEnabled"),
                         day = json.optString("day").takeIf(String::isNotBlank)?.let(LocalDate::parse),
                         originalImage = readAttachment(json.optJSONObject("originalImage")),
                         fields = List(fields.length()) { index ->
@@ -164,6 +169,7 @@ internal class EventStore(private val context: Context) :
         .put("title", event.title)
         .put("description", event.description)
         .put("time", event.time)
+        .put("reminderEnabled", event.reminderEnabled)
         .put("day", event.day?.toString())
         .put("originalImage", attachmentJson(event.originalImage))
         .put("fields", JSONArray(event.fields.map { field ->

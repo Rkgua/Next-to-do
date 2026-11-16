@@ -1,6 +1,7 @@
 package com.nexttodo.app
 
 import android.app.DatePickerDialog
+import android.app.NotificationManager
 import android.app.TimePickerDialog
 import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -20,11 +21,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -36,14 +39,32 @@ import java.time.format.DateTimeFormatter
 internal fun EventEditor(
     event: Event,
     enabled: Boolean,
+    recognizing: Boolean,
     onChange: (Event) -> Unit,
+    onRecognize: (Attachment) -> Unit,
     onSave: () -> Unit,
     onReset: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val recognitionPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        uri?.let { onRecognize(selectedAttachment(context, it, "原图")) }
+    }
     Column(
         Modifier.verticalScroll(rememberScrollState()).padding(bottom = 20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        OutlinedButton(
+            onClick = {
+                recognitionPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            },
+            enabled = enabled,
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text(if (recognizing) "正在识别图片…" else "AI 识别图片") }
+        Text(
+            "识别时会将所选图片发送至 DeepSeek，结果可在下方修改。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -62,7 +83,25 @@ internal fun EventEditor(
             onChange(event.copy(description = it))
         }
         TimeField("事件时间", event.time, enabled, initialDate = event.day) {
-            onChange(event.copy(time = it))
+            onChange(event.copy(time = it, reminderEnabled = it.isNotBlank() && event.reminderEnabled))
+        }
+        event.timeInMillis()?.let { time ->
+            val future = time > System.currentTimeMillis()
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("到点提醒", Modifier.weight(1f))
+                Switch(
+                    checked = event.reminderEnabled,
+                    onCheckedChange = { onChange(event.copy(reminderEnabled = it)) },
+                    enabled = enabled && (future || event.reminderEnabled),
+                )
+            }
+            val notifications = context.getSystemService(NotificationManager::class.java).areNotificationsEnabled()
+            val hint = when {
+                !future -> "事件时间已过"
+                event.reminderEnabled && !notifications -> "请在「My → 权限」开启通知"
+                else -> null
+            }
+            hint?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         }
         AttachmentField("原图", event.originalImage, FieldType.IMAGE, enabled) {
             onChange(event.copy(originalImage = it))
