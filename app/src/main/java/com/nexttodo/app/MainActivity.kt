@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -48,6 +50,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -168,6 +171,7 @@ private fun NextToDo(
     val detail = model.events.firstOrNull { it.id == detailId }
     val showingToday = tab == Tab.DAILY && detail == null
     val showingTimetable = tab == Tab.SCHEDULE
+    val keyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
     SideEffect {
         WindowCompat.getInsetsController(window, window.decorView).apply {
             isAppearanceLightStatusBars = when {
@@ -224,14 +228,17 @@ private fun NextToDo(
         )
             .windowInsetsPadding(
                 WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
-            ),
+            )
+            .imePadding(),
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            BottomTabs(tab, dark) {
-                detailId = null
-                showingPomodoro = false
-                tab = it
+            if (!keyboardVisible) {
+                BottomTabs(tab, dark) {
+                    detailId = null
+                    showingPomodoro = false
+                    tab = it
+                }
             }
         },
     ) { padding ->
@@ -254,13 +261,26 @@ private fun NextToDo(
             Box(Modifier.fillMaxSize().padding(padding)) { TimetableScreen(timetable) }
             return@Scaffold
         }
+        if (tab == Tab.DAILY && detail != null) {
+            EventDetails(
+                event = detail,
+                editable = !model.busy,
+                modifier = Modifier.fillMaxSize().padding(padding),
+                onBack = { detailId = null },
+                onEdit = {
+                    model.edit(detail)
+                    detailId = null
+                    tab = Tab.ADD
+                },
+            )
+            return@Scaffold
+        }
         Column(
             Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp),
         ) {
             Spacer(Modifier.height(20.dp))
             Text(
                 when {
-                    detail != null && tab == Tab.DAILY -> "事件详情"
                     tab == Tab.ADD && model.events.any { it.id == model.draft.id } -> "编辑事件"
                     tab == Tab.PROFILE && showingPomodoro -> "番茄钟"
                     else -> tab.title
@@ -274,20 +294,7 @@ private fun NextToDo(
                 return@Column
             }
             when (tab) {
-                Tab.DAILY -> {
-                    if (detail != null) EventDetails(
-                        detail,
-                        onBack = { detailId = null },
-                        onEdit = {
-                            if (!model.busy) {
-                                model.edit(detail)
-                                detailId = null
-                                tab = Tab.ADD
-                            }
-                        },
-                    )
-                }
-                Tab.SCHEDULE -> Unit
+                Tab.DAILY, Tab.SCHEDULE -> Unit
                 Tab.ADD -> EventEditor(
                     model.draft,
                     enabled = !model.busy,
