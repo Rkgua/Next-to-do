@@ -1,6 +1,7 @@
 package com.nexttodo.app
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -39,6 +40,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -128,8 +130,16 @@ private fun DateSelector(
         ) {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = CircleShape) {
+                    Image(
+                        painter = painterResource(R.drawable.nexttodo_logo),
+                        contentDescription = null,
+                        modifier = Modifier.size(40.dp).padding(4.dp),
+                    )
+                }
                 Text(
                     dayFor(state.currentPage).format(monthFormat),
                     style = MaterialTheme.typography.headlineSmall,
