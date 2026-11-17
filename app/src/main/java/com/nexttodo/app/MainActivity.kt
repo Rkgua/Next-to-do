@@ -322,7 +322,13 @@ private fun BottomTabs(selected: Tab, dark: Boolean, onSelect: (Tab) -> Unit) {
                 val active = selected == tab
                 Box(
                     Modifier.weight(1f).height(68.dp)
-                        .selectable(selected = active, role = Role.Tab, onClick = { onSelect(tab) }),
+                        .selectable(
+                            selected = active,
+                            interactionSource = null,
+                            indication = null,
+                            role = Role.Tab,
+                            onClick = { onSelect(tab) },
+                        ),
                     contentAlignment = Alignment.Center,
                 ) {
                     val contentColor = if (active) activeColor else inactiveColor
