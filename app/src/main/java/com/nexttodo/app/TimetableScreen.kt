@@ -1,357 +1,464 @@
 package com.nexttodo.app
 
-import android.app.Application
-import android.content.Context
-import android.net.Uri
+import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.vector.PathParser
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
+import androidx.compose.ui.unit.sp
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
-internal class TimetableViewModel(application: Application) : AndroidViewModel(application) {
-    private val preferences = application.getSharedPreferences("timetable", Context.MODE_PRIVATE)
-    var courses by mutableStateOf<List<CourseSlot>>(emptyList())
-        private set
-    var preview by mutableStateOf<List<CourseSlot>?>(null)
-        private set
-    var busy by mutableStateOf(false)
-        private set
-    var message by mutableStateOf("")
-        private set
-
-    init {
-        runOperation("无法读取本地课表") {
-            courses = withContext(Dispatchers.IO) {
-                val data = JSONArray(preferences.getString("courses", "[]") ?: "[]")
-                List(data.length()) { index ->
-                    val row = data.getJSONObject(index)
-                    CourseSlot(
-                        row.getString("name"),
-                        row.optInt("day").takeIf { it in 1..7 },
-                        row.optInt("first").takeIf { it > 0 },
-                        row.optInt("last").takeIf { it > 0 },
-                        row.optString("teacher"),
-                        row.optString("room"),
-                        row.optString("weeks"),
-                    )
-                }
-            }
-        }
-    }
-
-    fun chooseFile(uri: Uri) = runOperation("无法读取课表，请选择 .xlsx 文件") {
-        val imported = withContext(Dispatchers.IO) {
-            val resolver = getApplication<Application>().contentResolver
-            checkNotNull(resolver.openInputStream(uri)).use(::readTimetable)
-        }
-        preview = imported.filterNot { it in courses }.takeIf { it.isNotEmpty() }
-        if (preview == null) message = "这份课表已经导入"
-    }
-
-    fun closePreview() {
-        if (!busy) preview = null
-    }
-
-    fun confirmImport() {
-        val additions = preview ?: return
-        runOperation("无法保存课表，请重试") {
-            persist((courses + additions).distinct())
-            preview = null
-            message = "已导入 ${additions.size} 条课程安排"
-        }
-    }
-
-    fun saveCourse(previous: CourseSlot?, course: CourseSlot) = runOperation("无法保存课程，请重试") {
-        if (course != previous && course in courses) {
-            message = "课表中已存在相同的课程安排"
-            return@runOperation
-        }
-        val updated = if (previous == null) courses + course else courses.map {
-            if (it == previous) course else it
-        }
-        persist(updated)
-        message = if (previous == null) "已添加课程" else "已更新课程"
-    }
-
-    private suspend fun persist(updated: List<CourseSlot>) {
-        withContext(Dispatchers.IO) {
-            val data = JSONArray(updated.map {
-                JSONObject()
-                    .put("name", it.name)
-                    .put("day", it.weekday)
-                    .put("first", it.firstPeriod)
-                    .put("last", it.lastPeriod)
-                    .put("teacher", it.teacher)
-                    .put("room", it.room)
-                    .put("weeks", it.weeks)
-            })
-            check(preferences.edit().putString("courses", data.toString()).commit())
-        }
-        courses = updated
-    }
-
-    private fun runOperation(failure: String, action: suspend () -> Unit) {
-        if (busy) return
-        busy = true
-        message = ""
-        viewModelScope.launch {
-            try {
-                action()
-            } catch (exception: CancellationException) {
-                throw exception
-            } catch (exception: IllegalArgumentException) {
-                message = exception.message ?: failure
-            } catch (_: Exception) {
-                message = failure
-            } finally {
-                busy = false
-            }
-        }
-    }
-}
-
-private val excelMimeTypes = arrayOf(
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    "application/octet-stream",
+internal val timetableTop = Color(0xFFE4E5F0)
+internal val timetableBottom = Color(0xFFC3D1E5)
+internal val timetableInk = Color(0xFF17171C)
+internal val timetableAccent = Color(0xFF4A5D87)
+internal val timetableFont = FontFamily.Serif
+internal val courseColors = listOf(
+    Color(0xFFEE7B9B), Color(0xFFE7B576), Color(0xFF83ADEF),
+    Color(0xFFE6917A), Color(0xFF70BFC8), Color(0xFF789DBF), Color(0xFFAE92D4),
 )
+internal val timetableDays = listOf("一", "二", "三", "四", "五", "六", "日")
+private val periodTimes = listOf(
+    "08:00" to "08:45", "08:55" to "09:40", "10:00" to "10:45", "10:55" to "11:40",
+    "14:00" to "14:45", "14:55" to "15:40", "16:00" to "16:45", "16:55" to "17:40",
+    "19:00" to "19:45", "19:55" to "20:40",
+)
+private val periodHeight = 64.dp
+private val timeWidth = 34.dp
+private const val LAST_GRID_PERIOD = 99
+private val dateLabel = DateTimeFormatter.ofPattern("yyyy/M/d")
 
-private val dayLabels = listOf("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日")
+internal fun CourseSlot.displayColor(): Color = color?.let(::Color)
+    ?: courseColors[Math.floorMod(name.hashCode(), courseColors.size)]
+
+private fun CourseSlot.inGrid() = weekday != null && firstPeriod != null &&
+    lastPeriod != null && firstPeriod in 1..lastPeriod && lastPeriod <= LAST_GRID_PERIOD
 
 @Composable
 internal fun TimetableScreen(model: TimetableViewModel) {
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {
-        it?.let(model::chooseFile)
+    val today = LocalDate.now()
+    val table = model.selected
+    val currentWeek = table.currentWeek(today)
+    val count = table.weekCount(today)
+    val context = LocalContext.current
+    val snackbar = remember { SnackbarHostState() }
+    val excel = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {
+        it?.let { uri -> model.chooseFile(uri, TimetableFormat.EXCEL) }
     }
-    var appImport by rememberSaveable { mutableStateOf(false) }
-    var editCourseIndex by rememberSaveable { mutableStateOf<Int?>(null) }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(
-            onClick = { picker.launch(excelMimeTypes) },
-            enabled = !model.busy,
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text("导入 Excel") }
-        OutlinedButton(
-            onClick = { appImport = true },
-            enabled = !model.busy,
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text("从课表 App 导入") }
-        OutlinedButton(
-            onClick = { editCourseIndex = -1 },
-            enabled = !model.busy,
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text("手动添加课程") }
-        if (model.message.isNotEmpty()) {
-            Text(model.message, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val html = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {
+        it?.let { uri -> model.chooseFile(uri, TimetableFormat.HTML) }
+    }
+    var importing by remember { mutableStateOf(false) }
+    var controls by rememberSaveable { mutableStateOf(false) }
+    var editIndex by rememberSaveable(table.id) { mutableStateOf<Int?>(null) }
+    var overlappingIndices by rememberSaveable(table.id) { mutableStateOf<IntArray?>(null) }
+
+    LaunchedEffect(model.message, editIndex) {
+        if (model.message.isNotEmpty() && editIndex == null) {
+            snackbar.showSnackbar(model.message)
+            model.clearMessage()
         }
-        if (model.courses.isEmpty() && !model.busy) {
-            Text("暂无课表", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        val days = model.courses.groupBy { it.weekday ?: 8 }.toSortedMap()
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            days.forEach { (day, courses) ->
-                item {
+    }
+
+    val pager = key(table.id, table.firstDay, model.ready) {
+        rememberPagerState(initialPage = currentWeek.coerceIn(1, count) - 1) { count }
+    }
+    val gridScroll = key(table.id) { rememberScrollState() }
+    val week = pager.currentPage + 1
+    val monday = table.dateOfWeek(week)
+    val periodCount = maxOf(12, table.courses.filter { it.inGrid() }.maxOfOrNull { it.lastPeriod!! } ?: 0)
+    val enabled = model.ready && !model.busy && model.preview == null
+    Box(
+        Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(timetableTop, timetableBottom))),
+    ) {
+        Column {
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 46.dp).padding(start = 12.dp, end = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    val day = timetableDays[today.dayOfWeek.value - 1]
                     Text(
-                        dayLabels.getOrNull(day - 1) ?: "未指定节次",
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.padding(top = 8.dp),
+                        if (week == currentWeek) "第${week}周 周$day" else "第${week}周(非本周)",
+                        color = timetableInk, fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                        fontFamily = timetableFont, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )
+                    Text(today.format(dateLabel), color = timetableInk, fontFamily = timetableFont, fontSize = 12.sp)
                 }
-                items(courses.sortedBy { it.firstPeriod ?: Int.MAX_VALUE }) { course ->
-                    Surface(
-                        modifier = Modifier.fillMaxWidth().clickable(enabled = !model.busy) {
-                            editCourseIndex = model.courses.indexOf(course)
-                        },
-                        shape = MaterialTheme.shapes.medium,
-                        color = MaterialTheme.colorScheme.surface,
+                TimetableAction(TableGlyph.ADD, "添加课程", enabled) {
+                    model.clearMessage()
+                    editIndex = -1
+                }
+                Box {
+                    TimetableAction(TableGlyph.IMPORT, "导入课表", enabled) { importing = true }
+                    DropdownMenu(
+                        expanded = importing,
+                        onDismissRequest = { importing = false },
+                        shape = RoundedCornerShape(16.dp),
+                        containerColor = Color.White,
+                        modifier = Modifier.width(184.dp),
                     ) {
-                        CourseDescription(course, Modifier.padding(12.dp))
+                        DropdownMenuItem(
+                            text = { TableText("Excel导入", 15) },
+                            leadingIcon = { TableIcon(TableGlyph.EXCEL) },
+                            onClick = {
+                                importing = false
+                                excel.launch(TimetableFormat.EXCEL.mimeTypes.toList().toTypedArray())
+                            },
+                        )
+                        HorizontalDivider(color = Color(0xFFF1F1F1))
+                        DropdownMenuItem(
+                            text = { TableText("HTML导入", 15) },
+                            leadingIcon = { TableIcon(TableGlyph.HTML) },
+                            onClick = {
+                                importing = false
+                                html.launch(TimetableFormat.HTML.mimeTypes.toList().toTypedArray())
+                            },
+                        )
+                    }
+                }
+                TimetableAction(TableGlyph.SHARE, "分享课表", enabled) {
+                    val text = table.courses.joinToString("\n", prefix = "${table.name}\n") { course ->
+                        "${course.name}　${courseSummary(course)}"
+                    }
+                    val share = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
+                    context.startActivity(Intent.createChooser(share, "分享课表"))
+                }
+                TimetableAction(TableGlyph.MORE, "课表与周数", enabled) { controls = true }
+            }
+            WeekDates(monday, today)
+            Column(Modifier.fillMaxSize().verticalScroll(gridScroll)) {
+                HorizontalPager(
+                    state = pager,
+                    modifier = Modifier.fillMaxWidth(),
+                    beyondViewportPageCount = 0,
+                ) { page ->
+                    WeekGrid(table.courses, page + 1, periodCount, enabled) {
+                        model.clearMessage()
+                        if (it.size == 1) editIndex = table.courses.indexOf(it.single())
+                        else overlappingIndices = it.map(table.courses::indexOf).toIntArray()
                     }
                 }
             }
         }
+        if (controls) {
+            TimetableControls(
+                model = model, today = today, week = week, count = count,
+                onWeek = { requested -> pager.requestScrollToPage(requested - 1) },
+                onDismiss = { controls = false },
+            )
+        }
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
     }
-    editCourseIndex?.let { index ->
-        val course = model.courses.getOrNull(index)
-        CourseEditor(
-            course = course,
-            onDismiss = { editCourseIndex = null },
-            onSave = {
-                model.saveCourse(course, it)
-                editCourseIndex = null
-            },
-        )
-    }
-    if (appImport) {
+
+    overlappingIndices?.let { indices ->
         AlertDialog(
-            onDismissRequest = { appImport = false },
-            title = { Text("从课表 App 导入") },
-            text = { Text("在原课表 App 导出 .xlsx 课表，再选择该文件。需要包含课程名称、星期、开始节数和结束节数。") },
-            confirmButton = {
-                Button(onClick = { appImport = false; picker.launch(excelMimeTypes) }) {
-                    Text("选择导出的文件")
+            onDismissRequest = { overlappingIndices = null },
+            title = { Text("重叠的课程") },
+            text = {
+                LazyColumn(Modifier.heightIn(max = 280.dp)) {
+                    items(indices.toList()) { index ->
+                        table.courses.getOrNull(index)?.let { course ->
+                            Column(
+                                Modifier.fillMaxWidth().clickable {
+                                    overlappingIndices = null
+                                    editIndex = index
+                                }.padding(vertical = 12.dp),
+                            ) {
+                                Text(course.name, fontWeight = FontWeight.SemiBold)
+                                Text(courseSummary(course), fontSize = 12.sp)
+                            }
+                        }
+                    }
                 }
             },
-            dismissButton = { TextButton(onClick = { appImport = false }) { Text("取消") } },
+            confirmButton = { TextButton(onClick = { overlappingIndices = null }) { Text("关闭") } },
         )
+    }
+    if (model.ready) {
+        editIndex?.let { index ->
+            val previous = table.courses.getOrNull(index)
+            CourseEditor(
+                course = previous,
+                busy = model.busy,
+                message = model.message,
+                onDismiss = { editIndex = null; model.clearMessage() },
+                onSave = { changes -> model.saveCourses(previous, changes) { editIndex = null } },
+            )
+        }
     }
     model.preview?.let { courses ->
         AlertDialog(
             onDismissRequest = model::closePreview,
-            title = { Text("导入 ${courses.size} 条课程安排") },
+            title = { Text("导入到 ${table.name}") },
             text = {
-                LazyColumn(
-                    Modifier.heightIn(max = 280.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) { items(courses) { CourseDescription(it) } }
+                LazyColumn(Modifier.heightIn(max = 280.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    item { Text("共 ${courses.size} 条课程安排") }
+                    items(courses) {
+                        Column {
+                            Text(it.name, fontWeight = FontWeight.SemiBold)
+                            Text(courseSummary(it), fontSize = 12.sp)
+                        }
+                    }
+                }
             },
-            confirmButton = {
-                Button(onClick = model::confirmImport, enabled = !model.busy) { Text("确认导入") }
-            },
-            dismissButton = {
-                TextButton(onClick = model::closePreview, enabled = !model.busy) { Text("取消") }
-            },
+            confirmButton = { Button(onClick = model::confirmImport, enabled = !model.busy) { Text("确认导入") } },
+            dismissButton = { TextButton(onClick = model::closePreview, enabled = !model.busy) { Text("取消") } },
         )
     }
 }
 
 @Composable
-private fun CourseEditor(
-    course: CourseSlot?,
-    onDismiss: () -> Unit,
-    onSave: (CourseSlot) -> Unit,
-) {
-    var name by rememberSaveable { mutableStateOf(course?.name.orEmpty()) }
-    var day by rememberSaveable { mutableStateOf(course?.weekday) }
-    var first by rememberSaveable { mutableStateOf(course?.firstPeriod?.toString().orEmpty()) }
-    var last by rememberSaveable { mutableStateOf(course?.lastPeriod?.toString().orEmpty()) }
-    var teacher by rememberSaveable { mutableStateOf(course?.teacher.orEmpty()) }
-    var room by rememberSaveable { mutableStateOf(course?.room.orEmpty()) }
-    var weeks by rememberSaveable { mutableStateOf(course?.weeks.orEmpty()) }
-    val firstPeriod = first.toIntOrNull()
-    val lastPeriod = last.toIntOrNull()
-    val validPeriods = if (day == null) first.isBlank() && last.isBlank() else {
-        firstPeriod != null && firstPeriod > 0 && lastPeriod != null && lastPeriod >= firstPeriod
+private fun WeekDates(monday: LocalDate, today: LocalDate) {
+    Row(Modifier.fillMaxWidth().height(43.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.width(timeWidth), horizontalAlignment = Alignment.CenterHorizontally) {
+            TableText("${monday.monthValue}", 10, bold = true)
+            TableText("月", 10, bold = true)
+        }
+        timetableDays.forEachIndexed { index, label ->
+            val date = monday.plusDays(index.toLong())
+            val selected = date == today
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                val color = if (selected) timetableInk else Color(0xFF858C97)
+                TableText(label, 10, color)
+                Box(
+                    Modifier.size(20.dp).clip(RoundedCornerShape(4.dp))
+                        .background(if (selected) Color(0xFF2A2D32) else Color.Transparent),
+                    contentAlignment = Alignment.Center,
+                ) { TableText("${date.dayOfMonth}", 10, if (selected) Color.White else color) }
+            }
+        }
     }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (course == null) "手动添加课程" else "编辑课程") },
-        text = {
-            Column(
-                Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                CourseField("课程名称", name) { name = it }
-                Row(
-                    Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    FilterChip(
-                        selected = day == null,
-                        onClick = { day = null; first = ""; last = "" },
-                        label = { Text("未指定节次") },
-                    )
-                    dayLabels.forEachIndexed { index, label ->
-                        FilterChip(
-                            selected = day == index + 1,
-                            onClick = { day = index + 1 },
-                            label = { Text(label) },
+}
+
+@Composable
+private fun WeekGrid(
+    courses: List<CourseSlot>,
+    week: Int,
+    periods: Int,
+    enabled: Boolean,
+    onCourses: (List<CourseSlot>) -> Unit,
+) {
+    val (scheduled, unscheduled) = remember(courses) { courses.partition { it.inGrid() } }
+    val days = remember(scheduled) { scheduled.groupBy { it.weekday } }
+    Column {
+        Row(Modifier.fillMaxWidth().height(periodHeight * periods)) {
+            Column(Modifier.width(timeWidth)) {
+                repeat(periods) { index ->
+                    Column(
+                        Modifier.fillMaxWidth().height(periodHeight).padding(top = 11.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        TableText("${index + 1}", 12, bold = true)
+                        periodTimes.getOrNull(index)?.let { (start, end) ->
+                            TableText(start, 8, Color(0xFF56606B), Modifier.padding(top = 3.dp))
+                            TableText(end, 8, Color(0xFF56606B))
+                        }
+                    }
+                }
+            }
+            (1..7).forEach { day ->
+                val groups = remember(days, day, week) { groupOverlappingCourses(days[day].orEmpty(), week) }
+                Box(Modifier.weight(1f).fillMaxHeight()) {
+                    groups.forEach { group ->
+                        val course = group.courses.first()
+                        CourseBlock(
+                            course = course, active = course.takesPlaceIn(week), enabled = enabled,
+                            courseCount = group.courses.size,
+                            modifier = Modifier.offset(y = periodHeight * (group.first - 1)).fillMaxWidth()
+                                .height(periodHeight * (group.last - group.first + 1)),
+                            onClick = { onCourses(group.courses) },
                         )
                     }
                 }
-                if (day != null) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        CourseField("开始节数", first, Modifier.weight(1f), number = true) { first = it }
-                        CourseField("结束节数", last, Modifier.weight(1f), number = true) { last = it }
-                    }
-                }
-                CourseField("老师", teacher) { teacher = it }
-                CourseField("地点", room) { room = it }
-                CourseField("周数", weeks) { weeks = it }
             }
-        },
-        confirmButton = {
-            Button(
-                enabled = name.isNotBlank() && validPeriods,
-                onClick = {
-                    onSave(CourseSlot(name.trim(), day, firstPeriod, lastPeriod, teacher.trim(), room.trim(), weeks.trim()))
-                },
-            ) { Text("保存课程") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
-    )
-}
-
-@Composable
-private fun CourseField(
-    label: String,
-    value: String,
-    modifier: Modifier = Modifier.fillMaxWidth(),
-    number: Boolean = false,
-    onChange: (String) -> Unit,
-) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = { if (!number || it.all { digit -> digit in '0'..'9' }) onChange(it) },
-        modifier = modifier,
-        label = { Text(label) },
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = if (number) KeyboardType.Number else KeyboardType.Text),
-    )
-}
-
-@Composable
-private fun CourseDescription(course: CourseSlot, modifier: Modifier = Modifier) {
-    val period = course.firstPeriod?.let { first ->
-        val last = course.lastPeriod
-        if (last == null || first == last) "第 $first 节" else "第 $first–$last 节"
+        }
+        if (unscheduled.isNotEmpty()) {
+            TableText("未指定节次", 14, modifier = Modifier.padding(horizontal = 12.dp), bold = true)
+            unscheduled.forEach { course ->
+                TableText(
+                    course.name, 14,
+                    modifier = Modifier.fillMaxWidth().clickable(enabled = enabled) { onCourses(listOf(course)) }.padding(12.dp),
+                )
+            }
+        }
     }
-    Column(modifier) {
-        Text(course.name, style = MaterialTheme.typography.titleSmall)
-        val description = listOfNotNull(
-            period, course.room.ifBlank { null }, course.teacher.ifBlank { null }, course.weeks.ifBlank { null },
-        ).joinToString(" · ")
-        if (description.isNotEmpty()) {
+}
+
+private data class CourseGroup(val first: Int, val last: Int, val courses: List<CourseSlot>)
+
+private fun groupOverlappingCourses(courses: List<CourseSlot>, week: Int): List<CourseGroup> {
+    val (active, inactive) = courses.partition { it.takesPlaceIn(week) }
+    val visible = active + inactive.filter { other ->
+        active.none { it.firstPeriod!! <= other.lastPeriod!! && other.firstPeriod!! <= it.lastPeriod!! }
+    }
+    return buildList {
+        val group = mutableListOf<CourseSlot>()
+        var end = 0
+        fun finishGroup() {
+            if (group.isNotEmpty()) add(CourseGroup(group.first().firstPeriod!!, end, group.toList()))
+            group.clear()
+            end = 0
+        }
+        for (course in visible.sortedWith(compareBy<CourseSlot> { it.firstPeriod }.thenByDescending { it.lastPeriod })) {
+            if (course.firstPeriod!! > end) finishGroup()
+            group.add(course)
+            end = maxOf(end, course.lastPeriod!!)
+        }
+        finishGroup()
+    }
+}
+
+@Composable
+private fun CourseBlock(
+    course: CourseSlot, active: Boolean, enabled: Boolean, courseCount: Int, modifier: Modifier, onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(5.dp)
+    val fill = course.displayColor().copy(alpha = if (active) 1f else .40f)
+    Box(
+        modifier.padding(1.25.dp).clip(shape).background(fill)
+            .border(1.dp, Color.White.copy(alpha = if (active) .7f else .38f), shape)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 4.dp, vertical = 4.dp),
+    ) {
+        val color = Color.White.copy(alpha = if (active) .99f else .67f)
+        val footer = when {
+            active && courseCount > 1 -> "重叠 $courseCount 门"
+            !active && courseCount > 1 -> "非本周 · $courseCount 门"
+            !active -> "非本周"
+            else -> null
+        }
+        Column(Modifier.padding(bottom = if (footer == null) 0.dp else 12.dp)) {
             Text(
-                description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                course.name, fontFamily = timetableFont, fontWeight = FontWeight.Bold,
+                fontSize = 11.sp, lineHeight = 13.5.sp, maxLines = 6, overflow = TextOverflow.Ellipsis, color = color,
+            )
+            val details = listOfNotNull(course.room.takeIf(String::isNotBlank)?.let { "@$it" },
+                course.customTime.ifBlank { null }).joinToString("\n")
+            if (details.isNotEmpty()) {
+                Text(
+                    details, modifier = Modifier.padding(top = 4.dp), fontSize = 10.5.sp, lineHeight = 13.sp,
+                    fontFamily = timetableFont, color = color, maxLines = 4, overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (footer != null) TableText(footer, 8, color, Modifier.align(Alignment.BottomCenter), maxLines = 1)
+    }
+}
+
+internal fun courseSummary(course: CourseSlot): String = listOfNotNull(
+    course.weekday?.let { "周${timetableDays[it - 1]}　第${course.firstPeriod}–${course.lastPeriod}节" },
+    course.room.ifBlank { null }, course.teacher.ifBlank { null }, course.weeks.ifBlank { null },
+).joinToString(" · ")
+
+@Composable
+internal fun TableText(
+    text: String, size: Int, color: Color = timetableInk, modifier: Modifier = Modifier,
+    bold: Boolean = false, maxLines: Int = Int.MAX_VALUE,
+) = Text(
+    text, modifier, color = color, fontSize = size.sp, lineHeight = (size + 3).sp,
+    fontFamily = timetableFont, fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
+    maxLines = maxLines, overflow = TextOverflow.Ellipsis,
+)
+
+internal enum class TableGlyph(val path: String) {
+    ADD("M12 3v18M3 12h18"),
+    IMPORT("M10 4H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2V9M21 4c-5 0-9 3-9 11m-4-4 4 4 4-4"),
+    SHARE("M13 4 22 12 13 19v-5c-5 0-8 2-11 5 0-7 4-11 11-11z"),
+    MORE("M4 12h.1M12 12h.1M20 12h.1"),
+    EXCEL("M4 4h16v16H4zM4 9h16M4 15h16M9 9v11M15 9v11"),
+    HTML("M7 6 1 12l6 6m10-12 6 6-6 6m-3-15-4 18"),
+    CLOSE("M5 5l14 14M19 5 5 19"),
+    CHECK("m3 12 6 6L21 6"),
+    COLOR("M12 3a9 9 0 1 0 1 18c3 0 0-5 4-5h2c4 0 2-13-7-13zM7 12h.1M10 7h.1M15 7h.1M17 11h.1"),
+    STAR("M12 9l1 2 3 .5-2 2 .3 2.5-2.3-1.2L9.7 16l.3-2.5-2-2 3-.5zM12 2a10 10 0 1 0 0 20 10 10 0 1 0 0-20z"),
+    CALENDAR("M3 5h18v16H3zM3 10h18M8 3v4M16 3v4"),
+    CLOCK("M12 6v6l4 3M12 2a10 10 0 1 0 0 20 10 10 0 1 0 0-20z"),
+    CUSTOM("M12 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6m-8 0 8-8"),
+    ROOM("M12 22s8-7 8-12a8 8 0 0 0-16 0c0 5 8 12 8 12zM12 7a3 3 0 1 0 0 6 3 3 0 1 0 0-6z"),
+    PERSON("M16 21l5-9M3 21v-3a3 3 0 0 1 3-3h8M10 3a4 4 0 1 0 0 8 4 4 0 1 0 0-8z"),
+    NOTES("M4 3h16v18H4zM8 8h8m-8 4h6"),
+    NEXT("m9 5 7 7-7 7"),
+}
+
+@Composable
+internal fun TableIcon(glyph: TableGlyph, color: Color = timetableInk, size: Dp = 20.dp) {
+    val path = remember(glyph) { PathParser().parsePathString(glyph.path).toPath() }
+    Canvas(Modifier.size(size)) {
+        scale(this.size.width / 24f, this.size.height / 24f, androidx.compose.ui.geometry.Offset.Zero) {
+            drawPath(
+                path, color, style = Stroke(
+                    width = if (glyph == TableGlyph.MORE) 2.8f else 1.85f,
+                    cap = StrokeCap.Round, join = StrokeJoin.Round,
+                ),
             )
         }
     }
+}
+
+@Composable
+internal fun TimetableAction(glyph: TableGlyph, label: String, enabled: Boolean = true, onClick: () -> Unit) {
+    IconButton(
+        onClick = onClick, enabled = enabled,
+        modifier = Modifier.size(39.dp).semantics { contentDescription = label },
+    ) { TableIcon(glyph, timetableInk.copy(alpha = if (enabled) 1f else .4f)) }
 }

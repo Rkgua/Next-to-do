@@ -167,9 +167,14 @@ private fun NextToDo(
     val selectedDay = LocalDate.parse(selectedDate)
     val detail = model.events.firstOrNull { it.id == detailId }
     val showingToday = tab == Tab.DAILY && detail == null
+    val showingTimetable = tab == Tab.SCHEDULE
     SideEffect {
         WindowCompat.getInsetsController(window, window.decorView).apply {
-            isAppearanceLightStatusBars = if (showingToday) dark else !dark
+            isAppearanceLightStatusBars = when {
+                showingToday -> dark
+                showingTimetable -> true
+                else -> !dark
+            }
             isAppearanceLightNavigationBars = !dark
         }
     }
@@ -211,7 +216,11 @@ private fun NextToDo(
 
     Scaffold(
         modifier = Modifier.background(
-            if (showingToday) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background
+            when {
+                showingToday -> MaterialTheme.colorScheme.primary
+                showingTimetable -> timetableTop
+                else -> MaterialTheme.colorScheme.background
+            }
         )
             .windowInsetsPadding(
                 WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
@@ -239,6 +248,10 @@ private fun NextToDo(
                     },
                 )
             }
+            return@Scaffold
+        }
+        if (showingTimetable) {
+            Box(Modifier.fillMaxSize().padding(padding)) { TimetableScreen(timetable) }
             return@Scaffold
         }
         Column(
@@ -274,7 +287,7 @@ private fun NextToDo(
                         },
                     )
                 }
-                Tab.SCHEDULE -> TimetableScreen(timetable)
+                Tab.SCHEDULE -> Unit
                 Tab.ADD -> EventEditor(
                     model.draft,
                     enabled = !model.busy,
