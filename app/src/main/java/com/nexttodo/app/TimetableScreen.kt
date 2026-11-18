@@ -189,7 +189,7 @@ internal fun TimetableScreen(model: TimetableViewModel, previewTable: Timetable?
                 }
                 IconButton(onClick = { model.clearMessage(); model.clearAiPreview(); aiEditing = true }, enabled = enabled,
                     modifier = Modifier.size(39.dp).semantics { contentDescription = "AI 编辑课表" }) {
-                    Icon(painterResource(R.drawable.ic_timetable_ai), null, Modifier.size(22.dp),
+                    Icon(painterResource(R.drawable.ic_timetable_ai), null, Modifier.size(17.dp),
                         tint = toolbarInk.copy(alpha = if (enabled) 1f else .4f))
                 }
                 TimetableAction(TableGlyph.ADD, "添加课程", enabled, toolbarInk) {
