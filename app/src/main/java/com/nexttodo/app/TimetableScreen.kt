@@ -154,13 +154,15 @@ internal fun TimetableScreen(model: TimetableViewModel, previewTable: Timetable?
         ?: defaultBackgroundText(table.skin, timetableDark)
     val toolbarInk = table.style.toolbarTextColor?.let(::Color) ?: table.style.headerBackgroundColor?.let {
         if (Color(it).luminance() > .5f) Color(0xFF17171C) else Color.White
-    } ?: timetableInk
+    } ?: if (table.skin != TimetableSkin.DEFAULT) Color(textColors.header) else timetableInk
     Box(
-        Modifier.fillMaxSize().background(table.style.headerBackgroundColor?.let(::Color) ?: timetableTop),
+        Modifier.fillMaxSize().background(timetableTop).onSizeChanged { viewport = it },
     ) {
+        TimetableWallpaper(table.skin, table.backgroundImage, Modifier.matchParentSize(), table.style.backgroundDim)
         Column(Modifier.fillMaxSize()) {
             Row(
-                Modifier.fillMaxWidth().heightIn(min = 46.dp).padding(start = 12.dp, end = 2.dp),
+                Modifier.fillMaxWidth().background(table.style.headerBackgroundColor?.let(::Color) ?: Color.Transparent)
+                    .heightIn(min = 46.dp).padding(start = 12.dp, end = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
@@ -218,8 +220,7 @@ internal fun TimetableScreen(model: TimetableViewModel, previewTable: Timetable?
                 }
                 TimetableAction(TableGlyph.MORE, "课表与周数", enabled, toolbarInk) { controls = true }
             }
-            Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().onSizeChanged { viewport = it }) {
-                TimetableWallpaper(table.skin, table.backgroundImage, Modifier.matchParentSize(), table.style.backgroundDim)
+            Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
                 Column(Modifier.fillMaxSize()) {
                     WeekDates(monday, today, Color(textColors.header))
                     Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(gridScroll)) {
