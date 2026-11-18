@@ -135,12 +135,13 @@ internal fun TimetableScreen(model: TimetableViewModel, previewTable: Timetable?
     var controls by rememberSaveable { mutableStateOf(false) }
     var appearance by rememberSaveable(table.id) { mutableStateOf(false) }
     var aiEditing by rememberSaveable(table.id) { mutableStateOf(false) }
+    var aiImporting by rememberSaveable(table.id) { mutableStateOf(false) }
     var viewport by remember { mutableStateOf(IntSize.Zero) }
     var editIndex by rememberSaveable(table.id) { mutableStateOf<Int?>(null) }
     var overlappingIndices by rememberSaveable(table.id) { mutableStateOf<IntArray?>(null) }
 
-    LaunchedEffect(model.message, editIndex, appearance, aiEditing, isPreview) {
-        if (!isPreview && model.message.isNotEmpty() && editIndex == null && !appearance && !aiEditing) {
+    LaunchedEffect(model.message, editIndex, appearance, aiEditing, aiImporting, isPreview) {
+        if (!isPreview && model.message.isNotEmpty() && editIndex == null && !appearance && !aiEditing && !aiImporting) {
             snackbar.showSnackbar(model.message)
             model.clearMessage()
         }
@@ -222,6 +223,12 @@ internal fun TimetableScreen(model: TimetableViewModel, previewTable: Timetable?
                                 html.launch(TimetableFormat.HTML.mimeTypes.toList().toTypedArray())
                             },
                         )
+                        HorizontalDivider(color = timetableOutline)
+                        DropdownMenuItem(
+                            text = { TableText("AI解析导入", 15) },
+                            leadingIcon = { Icon(painterResource(R.drawable.ic_timetable_ai), null, Modifier.size(17.dp), tint = timetableInk) },
+                            onClick = { importing = false; model.clearMessage(); aiImporting = true },
+                        )
                     }
                 }
                 TimetableAction(TableGlyph.SHARE, "分享课表", enabled, toolbarInk) {
@@ -272,6 +279,9 @@ internal fun TimetableScreen(model: TimetableViewModel, previewTable: Timetable?
     }
     if (aiEditing && !isPreview) {
         TimetableAiEditor(model) { aiEditing = false; model.clearMessage(); model.clearAiPreview() }
+    }
+    if (aiImporting && !isPreview) {
+        TimetableAiImportScreen(model) { aiImporting = false }
     }
 
     overlappingIndices?.let { indices ->

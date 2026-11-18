@@ -19,6 +19,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineStart
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -104,9 +106,98 @@ internal class TimetableViewModel(application: Application) : AndroidViewModel(a
         private set
     var aiDraft by mutableStateOf<TimetableAiDraft?>(null)
         private set
+    var aiImportSource by mutableStateOf<AiTimetableSource?>(null)
+        private set
+    var aiImportDraft by mutableStateOf<AiTimetableImportDraft?>(null)
+        private set
+    var aiImportStage by mutableStateOf("")
+        private set
+    private var aiImportJob: Job? = null
+    private var aiImportService: TimetableAiImportService? = null
 
     fun setAiPreview(draft: TimetableAiDraft) { aiDraft = draft }
     fun clearAiPreview() { aiDraft = null }
+
+    override fun onCleared() {
+        aiImportService?.cancel()
+        super.onCleared()
+    }
+
+    fun chooseAiImportFile(uri: Uri) = aiImportOperation("无法读取文件，请重新选择") {
+        aiImportStage = "正在读取文件…"
+        val source = withContext(Dispatchers.IO) { readAiTimetableSource(getApplication(), uri) }
+        aiImportSource = source; aiImportDraft = null
+    }
+
+    fun useAiImportText(text: String) {
+        if (busy) return
+        require(text.length <= 100_000)
+        aiImportSource = AiTimetableSource("粘贴的课表文本", text.trim().toByteArray(Charsets.UTF_8), "user_data", "timetable.txt")
+        aiImportDraft = null; message = ""
+    }
+
+    fun generateAiImport() = aiImportOperation("AI 解析失败，请检查网络后重试") {
+        val source = requireNotNull(aiImportSource) { "请先选择课表文件或粘贴课表文本" }
+        require(source.data.isNotEmpty()) { "课表内容为空，请重新选择或填写" }
+        val table = selected
+        aiImportStage = "正在上传并解析课表…"
+        val service = TimetableAiImportService()
+        aiImportService = service
+        val result = withContext(Dispatchers.IO) {
+            val key = AppSettings(getApplication()).readDeepSeekKey()
+            require(!key.isNullOrBlank()) { "请先在 My 中填写并保存 DeepSeek API 密钥" }
+            service.parse(source, key)
+        }
+        require(selected.id == table.id) { "当前课表已切换，请重新解析后导入" }
+        val existing = table.courses.mapTo(hashSetOf()) { it.importFields() }
+        val additions = result.courses.filterNot { it.importFields() in existing }
+        require(additions.isNotEmpty()) { "识别到的课程都已存在，无需重复导入" }
+        aiImportDraft = AiTimetableImportDraft(table.id, source.name, additions,
+            result.courses.size - additions.size, result.notes)
+    }
+
+    fun confirmAiImport(onSaved: () -> Unit) = runOperation("无法导入课程，请重试") {
+        val draft = requireNotNull(aiImportDraft) { "请先解析并核对课程" }
+        require(selected.id == draft.tableId) { "当前课表已切换，请重新解析后导入" }
+        val existing = selected.courses.mapTo(hashSetOf()) { it.importFields() }
+        val additions = draft.courses.filterNot { it.importFields() in existing }
+        require(additions.isNotEmpty()) { "这些课程都已存在，无需重复导入" }
+        update(selected.copy(courses = selected.courses + additions))
+        aiImportDraft = null; aiImportSource = null
+        message = "已导入 ${additions.size} 条课程安排"
+        onSaved()
+    }
+
+    fun discardAiImportPreview() { if (!busy) { aiImportDraft = null; message = "" } }
+
+    fun closeAiImport() {
+        if (busy && aiImportJob == null) return
+        aiImportJob?.let { job ->
+            job.cancel()
+            aiImportService?.cancel()
+            aiImportJob = null; aiImportService = null; busy = false
+        }
+        aiImportStage = ""; aiImportSource = null; aiImportDraft = null; message = ""
+    }
+
+    private fun aiImportOperation(failure: String, action: suspend () -> Unit) {
+        if (busy || !ready) return
+        busy = true; message = ""
+        val job = viewModelScope.launch(start = CoroutineStart.LAZY) {
+            try { action() }
+            catch (exception: CancellationException) { throw exception }
+            catch (exception: IllegalArgumentException) { message = exception.message ?: failure }
+            catch (_: org.json.JSONException) { message = "AI 返回的课程格式有误，请重新解析" }
+            catch (_: Exception) { message = failure }
+            finally {
+                if (aiImportJob == coroutineContext[Job]) {
+                    aiImportJob = null; aiImportService = null; aiImportStage = ""; busy = false
+                }
+            }
+        }
+        aiImportJob = job
+        job.start()
+    }
 
     init {
         runOperation("无法读取本地课表") {
