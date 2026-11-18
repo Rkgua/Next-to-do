@@ -16,7 +16,7 @@ internal class GalleryPicker : ActivityResultContract<Unit, Uri?>() {
             ActivityResultContracts.PickVisualMedia().createIntent(context,
                 PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
         } else {
-            Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI).setType("image/*")
+            Intent(Intent.ACTION_PICK).setDataAndType(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "image/*")
         }
 
     override fun parseResult(resultCode: Int, intent: Intent?): Uri? =
