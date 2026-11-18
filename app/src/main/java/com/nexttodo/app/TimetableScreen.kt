@@ -113,7 +113,8 @@ private fun CourseSlot.inGrid() = weekday != null && firstPeriod != null &&
     lastPeriod != null && firstPeriod in 1..lastPeriod && lastPeriod <= LAST_GRID_PERIOD
 
 @Composable
-internal fun TimetableScreen(model: TimetableViewModel, previewTable: Timetable? = null, isPreview: Boolean = false) {
+internal fun TimetableScreen(model: TimetableViewModel, previewTable: Timetable? = null, isPreview: Boolean = false,
+    initialWeek: Int? = null) {
     val today = LocalDate.now()
     val table = previewTable ?: model.selected
     val currentWeek = table.currentWeek(today)
@@ -141,8 +142,8 @@ internal fun TimetableScreen(model: TimetableViewModel, previewTable: Timetable?
         }
     }
 
-    val pager = key(table.id, table.firstDay, model.ready) {
-        rememberPagerState(initialPage = currentWeek.coerceIn(1, count) - 1) { count }
+    val pager = key(table.id, table.firstDay, model.ready, initialWeek) {
+        rememberPagerState(initialPage = (initialWeek ?: currentWeek).coerceIn(1, count) - 1) { count }
     }
     val gridScroll = key(table.id) { rememberScrollState() }
     val week = pager.currentPage + 1
@@ -389,12 +390,12 @@ private fun WeekGrid(
             }
         }
         if (unscheduled.isNotEmpty()) {
-            TableText("未指定节次", 14, modifier = Modifier.padding(horizontal = 12.dp), bold = true)
+            TableText("未指定节次", 14, timeColor, modifier = Modifier.padding(horizontal = 12.dp), bold = true)
             unscheduled.forEach { course ->
-                TableText(
-                    course.name, 14,
-                    modifier = Modifier.fillMaxWidth().clickable(enabled = enabled) { onCourses(listOf(course)) }.padding(12.dp),
-                )
+                Column(Modifier.fillMaxWidth().clickable(enabled = enabled) { onCourses(listOf(course)) }.padding(12.dp)) {
+                    TableText(course.name, 14, timeColor)
+                    TableText(courseSummary(course), 10, timeColor.copy(alpha = .85f))
+                }
             }
         }
     }
@@ -470,7 +471,10 @@ private fun CourseBlock(
 }
 
 internal fun courseSummary(course: CourseSlot): String = listOfNotNull(
-    course.weekday?.let { "周${timetableDays[it - 1]}　第${course.firstPeriod}–${course.lastPeriod}节" },
+    course.weekday?.let {
+        "周${timetableDays[it - 1]}　" + if (course.firstPeriod != null && course.lastPeriod != null)
+            "第${course.firstPeriod}–${course.lastPeriod}节" else "未指定节次"
+    },
     course.room.ifBlank { null }, course.teacher.ifBlank { null }, course.weeks.ifBlank { null },
 ).joinToString(" · ")
 

@@ -66,10 +66,12 @@ internal data class TimetableStyle(
 
 internal fun colorHex(color: Int): String = "#%06X".format(color and 0xFFFFFF)
 
-internal data class TimetableAiDraft(val original: Timetable, val preview: Timetable, val summary: String)
+internal data class TimetableAiDraft(val original: Timetable, val preview: Timetable, val summary: String,
+    val courseChanges: List<AiCourseChange> = emptyList())
 
-internal fun parseTimetableAiDraft(original: Timetable, json: JSONObject, dark: Boolean): TimetableAiDraft {
-    val supported = setOf("summary", "style", "background", "headerTextColor", "timeTextColor", "unsupported")
+@JvmOverloads
+internal fun parseTimetableAiDraft(original: Timetable, json: JSONObject, dark: Boolean, allowCourseChanges: Boolean = false): TimetableAiDraft {
+    val supported = setOf("summary", "style", "background", "headerTextColor", "timeTextColor", "unsupported", "courseChanges")
     require(json.keys().asSequence().all { it in supported }) { "AI 返回了不支持的修改，请重新生成" }
     val unsupported = if (json.isNull("unsupported")) "" else json.optString("unsupported").trim()
     require(unsupported.isBlank()) { unsupported.take(180) }
@@ -84,9 +86,12 @@ internal fun parseTimetableAiDraft(original: Timetable, json: JSONObject, dark: 
     val updatedText = BackgroundTextColors(textColor("headerTextColor", currentText.header), textColor("timeTextColor", currentText.time))
     val textColors = if (json.has("headerTextColor") || json.has("timeTextColor")) original.backgroundTextColors + (key to updatedText)
         else original.backgroundTextColors
+    val operations = if (json.has("courseChanges")) json.getJSONArray("courseChanges") else JSONArray()
+    require(allowCourseChanges || operations.length() == 0) { "请切换到课程编辑后，再生成课程修改" }
+    val result = parseAiCourseChanges(original.courses, operations)
     val preview = original.copy(skin = skin,
         style = TimetableStyle.fromJson(if (json.has("style")) json.getJSONObject("style") else null, original.style),
-        backgroundTextColors = textColors)
-    require(preview != original) { "没有生成外观改动，请换一种描述再试" }
-    return TimetableAiDraft(original, preview, json.optString("summary", "已生成新的课表外观").take(240))
+        backgroundTextColors = textColors, courses = result.courses)
+    require(preview != original) { "没有生成改动，请换一种描述再试" }
+    return TimetableAiDraft(original, preview, json.optString("summary", "已生成课表修改方案").take(240), result.changes)
 }

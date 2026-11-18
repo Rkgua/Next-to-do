@@ -185,15 +185,18 @@ internal class TimetableViewModel(application: Application) : AndroidViewModel(a
             onSaved()
         }
 
-    fun applyAiDraft(draft: TimetableAiDraft, onSaved: () -> Unit) = runOperation("无法保存 AI 外观，请重试") {
+    fun applyAiDraft(draft: TimetableAiDraft, onSaved: () -> Unit) = runOperation("无法保存 AI 修改，请重试") {
         val current = selected
         val original = draft.original
         require(current.id == original.id && current.style == original.style && current.skin == original.skin &&
             current.backgroundImage == original.backgroundImage && current.backgroundTextColors == original.backgroundTextColors) {
             "课表外观已发生变化，请重新生成预览"
         }
+        val changesCourses = draft.preview.courses != original.courses
+        require(!changesCourses || current.courses == original.courses) { "课程已发生变化，请重新生成预览，避免覆盖新的修改" }
         update(current.copy(style = draft.preview.style, skin = draft.preview.skin,
-            backgroundTextColors = draft.preview.backgroundTextColors))
+            backgroundTextColors = draft.preview.backgroundTextColors,
+            courses = if (changesCourses) draft.preview.courses else current.courses))
         onSaved()
     }
 
