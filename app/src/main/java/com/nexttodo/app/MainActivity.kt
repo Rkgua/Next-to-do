@@ -68,6 +68,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         val model = ViewModelProvider(this)[EventViewModel::class.java]
         val timetable = ViewModelProvider(this)[TimetableViewModel::class.java]
+        val updates = ViewModelProvider(this)[AppUpdateViewModel::class.java]
         val settings = AppSettings(applicationContext)
         handleNavigationIntent(intent)
         setContent {
@@ -78,10 +79,11 @@ class MainActivity : ComponentActivity() {
                 AppTheme.DARK -> true
             }
             MaterialTheme(colorScheme = if (dark) DarkColors else LightColors) {
-                NextToDo(model, timetable, settings, lifecycle, theme, dark, window, timerRequests, eventRequest) {
+                NextToDo(model, timetable, updates, settings, lifecycle, theme, dark, window, timerRequests, eventRequest) {
                     settings.theme = it
                     theme = it
                 }
+                UpdatePrompt(updates)
             }
         }
     }
@@ -161,6 +163,7 @@ private enum class Tab(val label: String, val title: String, val icon: Int) {
 private fun NextToDo(
     model: EventViewModel,
     timetable: TimetableViewModel,
+    updates: AppUpdateViewModel,
     settings: AppSettings,
     lifecycle: Lifecycle,
     theme: AppTheme,
@@ -314,7 +317,7 @@ private fun NextToDo(
                 Tab.PROFILE -> if (showingPomodoro) {
                     PomodoroScreen(lifecycle) { showingPomodoro = false }
                 } else {
-                    ProfileSettings(settings, lifecycle, theme, onThemeChange) { showingPomodoro = true }
+                    ProfileSettings(settings, lifecycle, theme, updates, onThemeChange) { showingPomodoro = true }
                 }
             }
         }

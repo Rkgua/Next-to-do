@@ -53,6 +53,7 @@ internal fun ProfileSettings(
     settings: AppSettings,
     lifecycle: Lifecycle,
     theme: AppTheme,
+    updates: AppUpdateViewModel,
     onThemeChange: (AppTheme) -> Unit,
     onOpenPomodoro: () -> Unit,
 ) {
@@ -64,6 +65,7 @@ internal fun ProfileSettings(
             Text("番茄钟")
         }
         SettingsSection("DeepSeek") { DeepSeekSettings(settings) }
+        SettingsSection("版本更新") { UpdateSettings(updates) }
         SettingsSection("权限") { PermissionSettings(lifecycle) }
         SettingsSection("外观") {
             Row(
