@@ -5,6 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,6 +20,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -40,6 +42,7 @@ internal fun TodayFocusScreen(day: LocalDate, events: EventViewModel, timetable:
     var sorting by rememberSaveable { mutableStateOf(false) }
     var backgrounds by rememberSaveable { mutableStateOf(false) }
     var viewport by remember { mutableStateOf(IntSize.Zero) }
+    val dismiss by rememberUpdatedState(onDismiss)
     val background = appearance.effective(timetable.selected)
     val ink = background.headerColor?.let(::Color)
         ?: Color(defaultBackgroundText(background.skin, timetableDark).header)
@@ -55,7 +58,8 @@ internal fun TodayFocusScreen(day: LocalDate, events: EventViewModel, timetable:
                 isAppearanceLightNavigationBars = darkInk
             }
         }
-        Box(Modifier.fillMaxSize().onSizeChanged { viewport = it }) {
+        Box(Modifier.fillMaxSize().onSizeChanged { viewport = it }
+            .pointerInput(Unit) { detectTapGestures(onDoubleTap = { dismiss() }) }) {
             TimetableWallpaper(background.skin, background.image, Modifier.matchParentSize(), background.dim)
             // A subtle scrim keeps the title legible on photographs without whitening the image.
             if (!darkInk) Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
