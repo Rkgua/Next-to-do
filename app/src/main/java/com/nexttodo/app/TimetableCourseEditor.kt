@@ -155,7 +155,7 @@ internal fun CourseEditor(
                 contentAlignment = Alignment.Center,
             ) {
                 Box(Modifier.align(Alignment.CenterStart)) {
-                    TimetableAction(TableGlyph.CLOSE, "关闭编辑", !busy, onDismiss)
+                    TimetableAction(TableGlyph.CLOSE, "关闭编辑", !busy, onClick = onDismiss)
                 }
                 TableText(if (course == null) "添加课程" else "编辑课程", 18, bold = true)
                 Surface(

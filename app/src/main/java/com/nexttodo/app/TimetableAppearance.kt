@@ -136,7 +136,7 @@ private fun SkinOption(skin: TimetableSkin, image: String?, selected: Boolean, e
 }
 
 @Composable
-private fun AppearancePage(title: String, enabled: Boolean, onDismiss: () -> Unit,
+internal fun AppearancePage(title: String, enabled: Boolean, onDismiss: () -> Unit,
     action: @Composable () -> Unit = {}, content: @Composable ColumnScope.() -> Unit) {
     Dialog(onDismissRequest = { if (enabled) onDismiss() },
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
@@ -153,7 +153,7 @@ private fun AppearancePage(title: String, enabled: Boolean, onDismiss: () -> Uni
             Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
                 Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 8.dp),
                     verticalAlignment = Alignment.CenterVertically) {
-                    TimetableAction(TableGlyph.CLOSE, "关闭$title", enabled, onDismiss)
+                    TimetableAction(TableGlyph.CLOSE, "关闭$title", enabled, onClick = onDismiss)
                     Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
                     action()
                 }

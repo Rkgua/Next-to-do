@@ -50,6 +50,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
@@ -186,7 +187,7 @@ private fun NextToDo(
         WindowCompat.getInsetsController(window, window.decorView).apply {
             isAppearanceLightStatusBars = when {
                 showingToday -> false
-                showingTimetable -> !dark
+                showingTimetable -> timetable.selected.style.headerBackgroundColor?.let { Color(it).luminance() > .5f } ?: !dark
                 else -> !dark
             }
             isAppearanceLightNavigationBars = !dark
@@ -232,7 +233,7 @@ private fun NextToDo(
         modifier = Modifier.background(
             when {
                 showingToday -> todayHeaderBackground
-                showingTimetable -> timetableTop
+                showingTimetable -> timetable.selected.style.headerBackgroundColor?.let(::Color) ?: timetableTop
                 else -> MaterialTheme.colorScheme.background
             }
         )

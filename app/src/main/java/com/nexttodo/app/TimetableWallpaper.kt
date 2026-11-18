@@ -40,7 +40,7 @@ internal fun wallpaperFile(context: Context, name: String): File? =
     name.takeIf { it.matches(Regex("wallpaper-[a-f0-9-]+\\.jpg")) }?.let { File(context.filesDir, it) }
 
 @Composable
-internal fun TimetableWallpaper(skin: TimetableSkin, image: String?, modifier: Modifier = Modifier) {
+internal fun TimetableWallpaper(skin: TimetableSkin, image: String?, modifier: Modifier = Modifier, dimOverride: Float? = null) {
     val dark = timetableDark
     val top = timetableTop
     val bottom = timetableBottom
@@ -61,8 +61,9 @@ internal fun TimetableWallpaper(skin: TimetableSkin, image: String?, modifier: M
         if (skin == TimetableSkin.CUSTOM && bitmap != null) {
             Image(bitmap!!.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         }
-        if (dark && skin != TimetableSkin.DEFAULT) {
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .38f)))
+        val dim = dimOverride ?: if (dark && skin != TimetableSkin.DEFAULT) .38f else 0f
+        if (dim > 0f) {
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = dim)))
         }
     }
 }

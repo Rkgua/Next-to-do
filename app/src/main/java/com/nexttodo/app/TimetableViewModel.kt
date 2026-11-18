@@ -41,6 +41,7 @@ internal data class Timetable(
     val backgroundImage: String? = null,
     val backgroundImages: List<String> = emptyList(),
     val backgroundTextColors: Map<String, BackgroundTextColors> = emptyMap(),
+    val style: TimetableStyle = TimetableStyle(),
 ) {
     fun currentWeek(today: LocalDate = LocalDate.now()): Int =
         ChronoUnit.WEEKS.between(firstDay.monday(), today.monday()).toInt() + 1
@@ -101,6 +102,11 @@ internal class TimetableViewModel(application: Application) : AndroidViewModel(a
         private set
     var ready by mutableStateOf(false)
         private set
+    var aiDraft by mutableStateOf<TimetableAiDraft?>(null)
+        private set
+
+    fun setAiPreview(draft: TimetableAiDraft) { aiDraft = draft }
+    fun clearAiPreview() { aiDraft = null }
 
     init {
         runOperation("无法读取本地课表") {
@@ -128,6 +134,7 @@ internal class TimetableViewModel(application: Application) : AndroidViewModel(a
                                     BackgroundTextColors(saved.getInt("header"), saved.getInt("time"))
                                 }
                             }.orEmpty(),
+                            runCatching { TimetableStyle.fromJson(it.optJSONObject("style")) }.getOrDefault(TimetableStyle()),
                         )
                     }
                 }
@@ -177,6 +184,18 @@ internal class TimetableViewModel(application: Application) : AndroidViewModel(a
             update(selected.copy(backgroundTextColors = updated))
             onSaved()
         }
+
+    fun applyAiDraft(draft: TimetableAiDraft, onSaved: () -> Unit) = runOperation("无法保存 AI 外观，请重试") {
+        val current = selected
+        val original = draft.original
+        require(current.id == original.id && current.style == original.style && current.skin == original.skin &&
+            current.backgroundImage == original.backgroundImage && current.backgroundTextColors == original.backgroundTextColors) {
+            "课表外观已发生变化，请重新生成预览"
+        }
+        update(current.copy(style = draft.preview.style, skin = draft.preview.skin,
+            backgroundTextColors = draft.preview.backgroundTextColors))
+        onSaved()
+    }
 
     fun saveBackground(bitmap: Bitmap, crop: WallpaperCrop, onSaved: () -> Unit) =
         runOperation("无法保存背景图片，请重试") {
@@ -284,6 +303,7 @@ internal class TimetableViewModel(application: Application) : AndroidViewModel(a
                 .put("courses", JSONArray(table.courses.map(CourseSlot::toJson)))
                 .put("skin", table.skin.name).put("backgroundImage", table.backgroundImage.orEmpty())
                 .put("backgroundImages", JSONArray(table.backgroundImages))
+                .put("style", table.style.toJson())
                 .put("backgroundTextColors", JSONObject(table.backgroundTextColors.mapValues { (_, colors) ->
                     JSONObject().put("header", colors.header).put("time", colors.time)
                 }))

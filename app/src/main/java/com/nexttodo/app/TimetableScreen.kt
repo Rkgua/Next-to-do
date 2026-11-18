@@ -33,6 +33,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -60,6 +61,7 @@ import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.semantics.contentDescription
@@ -100,7 +102,6 @@ private val periodTimes = listOf(
     "14:00" to "14:45", "14:55" to "15:40", "16:00" to "16:45", "16:55" to "17:40",
     "19:00" to "19:45", "19:55" to "20:40",
 )
-private val periodHeight = 64.dp
 private val timeWidth = 34.dp
 private const val LAST_GRID_PERIOD = 99
 private val dateLabel = DateTimeFormatter.ofPattern("yyyy/M/d")
@@ -112,9 +113,9 @@ private fun CourseSlot.inGrid() = weekday != null && firstPeriod != null &&
     lastPeriod != null && firstPeriod in 1..lastPeriod && lastPeriod <= LAST_GRID_PERIOD
 
 @Composable
-internal fun TimetableScreen(model: TimetableViewModel) {
+internal fun TimetableScreen(model: TimetableViewModel, previewTable: Timetable? = null, isPreview: Boolean = false) {
     val today = LocalDate.now()
-    val table = model.selected
+    val table = previewTable ?: model.selected
     val currentWeek = table.currentWeek(today)
     val count = table.weekCount(today)
     val context = LocalContext.current
@@ -128,12 +129,13 @@ internal fun TimetableScreen(model: TimetableViewModel) {
     var importing by remember { mutableStateOf(false) }
     var controls by rememberSaveable { mutableStateOf(false) }
     var appearance by rememberSaveable(table.id) { mutableStateOf(false) }
+    var aiEditing by rememberSaveable(table.id) { mutableStateOf(false) }
     var viewport by remember { mutableStateOf(IntSize.Zero) }
     var editIndex by rememberSaveable(table.id) { mutableStateOf<Int?>(null) }
     var overlappingIndices by rememberSaveable(table.id) { mutableStateOf<IntArray?>(null) }
 
-    LaunchedEffect(model.message, editIndex, appearance) {
-        if (model.message.isNotEmpty() && editIndex == null && !appearance) {
+    LaunchedEffect(model.message, editIndex, appearance, aiEditing, isPreview) {
+        if (!isPreview && model.message.isNotEmpty() && editIndex == null && !appearance && !aiEditing) {
             snackbar.showSnackbar(model.message)
             model.clearMessage()
         }
@@ -146,11 +148,14 @@ internal fun TimetableScreen(model: TimetableViewModel) {
     val week = pager.currentPage + 1
     val monday = table.dateOfWeek(week)
     val periodCount = maxOf(12, table.courses.filter { it.inGrid() }.maxOfOrNull { it.lastPeriod!! } ?: 0)
-    val enabled = model.ready && !model.busy && model.preview == null
+    val enabled = !isPreview && model.ready && !model.busy && model.preview == null
     val textColors = table.backgroundTextColors[backgroundKey(table.skin, table.backgroundImage)]
         ?: defaultBackgroundText(table.skin, timetableDark)
+    val toolbarInk = table.style.toolbarTextColor?.let(::Color) ?: table.style.headerBackgroundColor?.let {
+        if (Color(it).luminance() > .5f) Color(0xFF17171C) else Color.White
+    } ?: timetableInk
     Box(
-        Modifier.fillMaxSize().background(timetableTop),
+        Modifier.fillMaxSize().background(table.style.headerBackgroundColor?.let(::Color) ?: timetableTop),
     ) {
         Column(Modifier.fillMaxSize()) {
             Row(
@@ -161,17 +166,22 @@ internal fun TimetableScreen(model: TimetableViewModel) {
                     val day = timetableDays[today.dayOfWeek.value - 1]
                     Text(
                         if (week == currentWeek) "第${week}周 周$day" else "第${week}周(非本周)",
-                        color = timetableInk, fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                        color = toolbarInk, fontSize = 18.sp, fontWeight = FontWeight.Bold,
                         fontFamily = timetableFont, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )
-                    Text(today.format(dateLabel), color = timetableInk, fontFamily = timetableFont, fontSize = 12.sp)
+                    Text(today.format(dateLabel), color = toolbarInk, fontFamily = timetableFont, fontSize = 12.sp)
                 }
-                TimetableAction(TableGlyph.ADD, "添加课程", enabled) {
+                IconButton(onClick = { model.clearMessage(); model.clearAiPreview(); aiEditing = true }, enabled = enabled,
+                    modifier = Modifier.size(39.dp).semantics { contentDescription = "AI 编辑课表" }) {
+                    Icon(painterResource(R.drawable.ic_timetable_ai), null, Modifier.size(22.dp),
+                        tint = toolbarInk.copy(alpha = if (enabled) 1f else .4f))
+                }
+                TimetableAction(TableGlyph.ADD, "添加课程", enabled, toolbarInk) {
                     model.clearMessage()
                     editIndex = -1
                 }
                 Box {
-                    TimetableAction(TableGlyph.IMPORT, "导入课表", enabled) { importing = true }
+                    TimetableAction(TableGlyph.IMPORT, "导入课表", enabled, toolbarInk) { importing = true }
                     DropdownMenu(
                         expanded = importing,
                         onDismissRequest = { importing = false },
@@ -198,17 +208,17 @@ internal fun TimetableScreen(model: TimetableViewModel) {
                         )
                     }
                 }
-                TimetableAction(TableGlyph.SHARE, "分享课表", enabled) {
+                TimetableAction(TableGlyph.SHARE, "分享课表", enabled, toolbarInk) {
                     val text = table.courses.joinToString("\n", prefix = "${table.name}\n") { course ->
                         "${course.name}　${courseSummary(course)}"
                     }
                     val share = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
                     context.startActivity(Intent.createChooser(share, "分享课表"))
                 }
-                TimetableAction(TableGlyph.MORE, "课表与周数", enabled) { controls = true }
+                TimetableAction(TableGlyph.MORE, "课表与周数", enabled, toolbarInk) { controls = true }
             }
             Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().onSizeChanged { viewport = it }) {
-                TimetableWallpaper(table.skin, table.backgroundImage, Modifier.matchParentSize())
+                TimetableWallpaper(table.skin, table.backgroundImage, Modifier.matchParentSize(), table.style.backgroundDim)
                 Column(Modifier.fillMaxSize()) {
                     WeekDates(monday, today, Color(textColors.header))
                     Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(gridScroll)) {
@@ -217,7 +227,7 @@ internal fun TimetableScreen(model: TimetableViewModel) {
                             modifier = Modifier.fillMaxWidth(),
                             beyondViewportPageCount = 0,
                         ) { page ->
-                            WeekGrid(table.courses, page + 1, periodCount, enabled, Color(textColors.time)) {
+                            WeekGrid(table.courses, page + 1, periodCount, enabled, Color(textColors.time), table.style) {
                                 model.clearMessage()
                                 if (it.size == 1) editIndex = table.courses.indexOf(it.single())
                                 else overlappingIndices = it.map(table.courses::indexOf).toIntArray()
@@ -242,6 +252,9 @@ internal fun TimetableScreen(model: TimetableViewModel) {
         TimetableAppearance(model,
             if (viewport.height > 0) viewport.width.toFloat() / viewport.height else .5f,
             onDismiss = { appearance = false; model.clearMessage() })
+    }
+    if (aiEditing && !isPreview) {
+        TimetableAiEditor(model) { aiEditing = false; model.clearMessage(); model.clearAiPreview() }
     }
 
     overlappingIndices?.let { indices ->
@@ -336,8 +349,10 @@ private fun WeekGrid(
     periods: Int,
     enabled: Boolean,
     timeColor: Color,
+    style: TimetableStyle,
     onCourses: (List<CourseSlot>) -> Unit,
 ) {
+    val periodHeight = style.periodHeightDp.dp
     val (scheduled, unscheduled) = remember(courses) { courses.partition { it.inGrid() } }
     val days = remember(scheduled) { scheduled.groupBy { it.weekday } }
     Column {
@@ -364,6 +379,7 @@ private fun WeekGrid(
                         CourseBlock(
                             course = course, active = course.takesPlaceIn(week), enabled = enabled,
                             courseCount = group.courses.size,
+                            style = style,
                             modifier = Modifier.offset(y = periodHeight * (group.first - 1)).fillMaxWidth()
                                 .height(periodHeight * (group.last - group.first + 1)),
                             onClick = { onCourses(group.courses) },
@@ -411,19 +427,22 @@ private fun groupOverlappingCourses(courses: List<CourseSlot>, week: Int): List<
 
 @Composable
 private fun CourseBlock(
-    course: CourseSlot, active: Boolean, enabled: Boolean, courseCount: Int, modifier: Modifier, onClick: () -> Unit,
+    course: CourseSlot, active: Boolean, enabled: Boolean, courseCount: Int, style: TimetableStyle, modifier: Modifier, onClick: () -> Unit,
 ) {
-    val shape = RoundedCornerShape(5.dp)
-    val base = course.displayColor()
+    val shape = RoundedCornerShape(style.cardCornerDp.dp)
+    val palette = style.cardColors
+    val base = if (palette.isEmpty()) course.displayColor() else Color(palette[Math.floorMod(course.name.hashCode(), palette.size)])
     val nightFill = lerp(base, Color(0xFF0C1428), .55f)
-    val fill = (if (timetableDark) nightFill else base).copy(alpha = if (active) 1f else .40f)
+    val fill = (if (timetableDark && palette.isEmpty()) nightFill else base)
+        .copy(alpha = style.cardOpacity * if (active) 1f else .40f)
+    val font = if (style.sansSerif) FontFamily.SansSerif else timetableFont
     Box(
-        modifier.padding(1.25.dp).clip(shape).background(fill)
+        modifier.padding(style.cardGapDp.dp).clip(shape).background(fill)
             .border(1.dp, Color.White.copy(alpha = if (active) .7f else .38f), shape)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 4.dp, vertical = 4.dp),
     ) {
-        val color = Color.White.copy(alpha = if (active) .99f else .67f)
+        val color = Color(style.courseTextColor).copy(alpha = if (active) .99f else .67f)
         val footer = when {
             active && courseCount > 1 -> "重叠 $courseCount 门"
             !active && courseCount > 1 -> "非本周 · $courseCount 门"
@@ -432,15 +451,17 @@ private fun CourseBlock(
         }
         Column(Modifier.padding(bottom = if (footer == null) 0.dp else 12.dp)) {
             Text(
-                course.name, fontFamily = timetableFont, fontWeight = FontWeight.Bold,
-                fontSize = 11.sp, lineHeight = 13.5.sp, maxLines = 6, overflow = TextOverflow.Ellipsis, color = color,
+                course.name, fontFamily = font, fontWeight = FontWeight.Bold,
+                fontSize = style.courseFontSp.sp, lineHeight = (style.courseFontSp + 2.5f).sp,
+                maxLines = 6, overflow = TextOverflow.Ellipsis, color = color,
             )
             val details = listOfNotNull(course.room.takeIf(String::isNotBlank)?.let { "@$it" },
                 course.customTime.ifBlank { null }).joinToString("\n")
             if (details.isNotEmpty()) {
                 Text(
-                    details, modifier = Modifier.padding(top = 4.dp), fontSize = 10.5.sp, lineHeight = 13.sp,
-                    fontFamily = timetableFont, color = color, maxLines = 4, overflow = TextOverflow.Ellipsis,
+                    details, modifier = Modifier.padding(top = 4.dp), fontSize = (style.courseFontSp - .5f).coerceAtLeast(8f).sp,
+                    lineHeight = (style.courseFontSp + 2).sp,
+                    fontFamily = font, color = color, maxLines = 4, overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -499,9 +520,9 @@ internal fun TableIcon(glyph: TableGlyph, color: Color = timetableInk, size: Dp 
 }
 
 @Composable
-internal fun TimetableAction(glyph: TableGlyph, label: String, enabled: Boolean = true, onClick: () -> Unit) {
+internal fun TimetableAction(glyph: TableGlyph, label: String, enabled: Boolean = true, color: Color = timetableInk, onClick: () -> Unit) {
     IconButton(
         onClick = onClick, enabled = enabled,
         modifier = Modifier.size(39.dp).semantics { contentDescription = label },
-    ) { TableIcon(glyph, timetableInk.copy(alpha = if (enabled) 1f else .4f)) }
+    ) { TableIcon(glyph, color.copy(alpha = if (enabled) 1f else .4f)) }
 }
