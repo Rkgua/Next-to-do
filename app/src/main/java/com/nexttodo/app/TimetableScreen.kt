@@ -147,6 +147,8 @@ internal fun TimetableScreen(model: TimetableViewModel) {
     val monday = table.dateOfWeek(week)
     val periodCount = maxOf(12, table.courses.filter { it.inGrid() }.maxOfOrNull { it.lastPeriod!! } ?: 0)
     val enabled = model.ready && !model.busy && model.preview == null
+    val textColors = table.backgroundTextColors[backgroundKey(table.skin, table.backgroundImage)]
+        ?: defaultBackgroundText(table.skin, timetableDark)
     Box(
         Modifier.fillMaxSize().background(timetableTop),
     ) {
@@ -208,14 +210,14 @@ internal fun TimetableScreen(model: TimetableViewModel) {
             Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().onSizeChanged { viewport = it }) {
                 TimetableWallpaper(table.skin, table.backgroundImage, Modifier.matchParentSize())
                 Column(Modifier.fillMaxSize()) {
-                    WeekDates(monday, today)
+                    WeekDates(monday, today, Color(textColors.header))
                     Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(gridScroll)) {
                         HorizontalPager(
                             state = pager,
                             modifier = Modifier.fillMaxWidth(),
                             beyondViewportPageCount = 0,
                         ) { page ->
-                            WeekGrid(table.courses, page + 1, periodCount, enabled) {
+                            WeekGrid(table.courses, page + 1, periodCount, enabled, Color(textColors.time)) {
                                 model.clearMessage()
                                 if (it.size == 1) editIndex = table.courses.indexOf(it.single())
                                 else overlappingIndices = it.map(table.courses::indexOf).toIntArray()
@@ -300,17 +302,17 @@ internal fun TimetableScreen(model: TimetableViewModel) {
 }
 
 @Composable
-private fun WeekDates(monday: LocalDate, today: LocalDate) {
+private fun WeekDates(monday: LocalDate, today: LocalDate, headerColor: Color) {
     Row(Modifier.fillMaxWidth().height(43.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.width(timeWidth), horizontalAlignment = Alignment.CenterHorizontally) {
-            TableText("${monday.monthValue}", 10, bold = true)
-            TableText("月", 10, bold = true)
+            TableText("${monday.monthValue}", 10, headerColor, bold = true)
+            TableText("月", 10, headerColor, bold = true)
         }
         timetableDays.forEachIndexed { index, label ->
             val date = monday.plusDays(index.toLong())
             val selected = date == today
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                val color = if (selected) timetableInk else if (timetableDark) timetableMuted else Color(0xFF858C97)
+                val color = if (selected) headerColor else headerColor.copy(alpha = .85f)
                 TableText(label, 10, color)
                 Box(
                     Modifier.size(20.dp).clip(RoundedCornerShape(4.dp))
@@ -333,6 +335,7 @@ private fun WeekGrid(
     week: Int,
     periods: Int,
     enabled: Boolean,
+    timeColor: Color,
     onCourses: (List<CourseSlot>) -> Unit,
 ) {
     val (scheduled, unscheduled) = remember(courses) { courses.partition { it.inGrid() } }
@@ -345,10 +348,10 @@ private fun WeekGrid(
                         Modifier.fillMaxWidth().height(periodHeight).padding(top = 11.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        TableText("${index + 1}", 12, bold = true)
+                        TableText("${index + 1}", 12, timeColor, bold = true)
                         periodTimes.getOrNull(index)?.let { (start, end) ->
-                            TableText(start, 8, timetableMuted, Modifier.padding(top = 3.dp))
-                            TableText(end, 8, timetableMuted)
+                            TableText(start, 8, timeColor, Modifier.padding(top = 3.dp))
+                            TableText(end, 8, timeColor)
                         }
                     }
                 }

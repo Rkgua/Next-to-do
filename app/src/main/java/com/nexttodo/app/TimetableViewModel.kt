@@ -40,6 +40,7 @@ internal data class Timetable(
     val skin: TimetableSkin = TimetableSkin.DEFAULT,
     val backgroundImage: String? = null,
     val backgroundImages: List<String> = emptyList(),
+    val backgroundTextColors: Map<String, BackgroundTextColors> = emptyMap(),
 ) {
     fun currentWeek(today: LocalDate = LocalDate.now()): Int =
         ChronoUnit.WEEKS.between(firstDay.monday(), today.monday()).toInt() + 1
@@ -121,6 +122,12 @@ internal class TimetableViewModel(application: Application) : AndroidViewModel(a
                             it.optJSONArray("backgroundImages")?.let { images ->
                                 List(images.length()) { index -> images.getString(index) }.distinct()
                             } ?: listOfNotNull(it.optString("backgroundImage").takeIf(String::isNotBlank)),
+                            it.optJSONObject("backgroundTextColors")?.let { colors ->
+                                colors.keys().asSequence().associateWith { key ->
+                                    val saved = colors.getJSONObject(key)
+                                    BackgroundTextColors(saved.getInt("header"), saved.getInt("time"))
+                                }
+                            }.orEmpty(),
                         )
                     }
                 }
@@ -163,6 +170,14 @@ internal class TimetableViewModel(application: Application) : AndroidViewModel(a
         update(selected.copy(skin = TimetableSkin.CUSTOM, backgroundImage = image))
     }
 
+    fun saveBackgroundTextColors(key: String, colors: BackgroundTextColors?, onSaved: () -> Unit) =
+        runOperation("无法保存文字颜色，请重试") {
+            val updated = if (colors == null) selected.backgroundTextColors - key
+                else selected.backgroundTextColors + (key to colors)
+            update(selected.copy(backgroundTextColors = updated))
+            onSaved()
+        }
+
     fun saveBackground(bitmap: Bitmap, crop: WallpaperCrop, onSaved: () -> Unit) =
         runOperation("无法保存背景图片，请重试") {
             val table = selected
@@ -187,6 +202,7 @@ internal class TimetableViewModel(application: Application) : AndroidViewModel(a
         val table = selected
         require(image in table.backgroundImages)
         update(table.copy(backgroundImages = table.backgroundImages - image,
+            backgroundTextColors = table.backgroundTextColors - backgroundKey(TimetableSkin.CUSTOM, image),
             backgroundImage = table.backgroundImage.takeUnless { it == image },
             skin = if (table.skin == TimetableSkin.CUSTOM && table.backgroundImage == image) TimetableSkin.DEFAULT else table.skin))
         withContext(Dispatchers.IO) { wallpaperFile(getApplication(), image)?.delete() }
@@ -268,6 +284,9 @@ internal class TimetableViewModel(application: Application) : AndroidViewModel(a
                 .put("courses", JSONArray(table.courses.map(CourseSlot::toJson)))
                 .put("skin", table.skin.name).put("backgroundImage", table.backgroundImage.orEmpty())
                 .put("backgroundImages", JSONArray(table.backgroundImages))
+                .put("backgroundTextColors", JSONObject(table.backgroundTextColors.mapValues { (_, colors) ->
+                    JSONObject().put("header", colors.header).put("time", colors.time)
+                }))
         })
         check(preferences.edit().putString("tables", data.toString()).putString("selectedTable", id).commit())
     }

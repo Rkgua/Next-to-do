@@ -47,6 +47,7 @@ private data class BackgroundOption(val skin: TimetableSkin, val image: String? 
 @Composable
 internal fun TimetableAppearance(model: TimetableViewModel, aspectRatio: Float, onDismiss: () -> Unit) {
     var source by rememberSaveable { mutableStateOf<String?>(null) }
+    var editing by rememberSaveable { mutableStateOf<String?>(null) }
     val backgrounds = TimetableSkin.entries.filter { it != TimetableSkin.CUSTOM }.map { BackgroundOption(it) } +
         model.selected.backgroundImages.mapIndexed { index, image ->
             BackgroundOption(TimetableSkin.CUSTOM, image, "自定义 ${index + 1}")
@@ -60,12 +61,17 @@ internal fun TimetableAppearance(model: TimetableViewModel, aspectRatio: Float, 
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text("课表背景 · 选择背景", style = MaterialTheme.typography.titleMedium)
+            Text("长按背景可设置头部和左侧时间的文字颜色", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
             backgrounds.chunked(2).forEach { options ->
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     options.forEach { option ->
                         SkinOption(option.skin, option.image,
                             model.selected.skin == option.skin && (option.image == null || model.selected.backgroundImage == option.image),
                             !model.busy, Modifier.weight(1f), label = option.label,
+                            colors = model.selected.backgroundTextColors[backgroundKey(option.skin, option.image)]
+                                ?: defaultBackgroundText(option.skin, timetableDark),
+                            onLongClick = { model.clearMessage(); editing = backgroundKey(option.skin, option.image) },
                             onRemove = option.image?.let { image -> { model.removeBackground(image); Unit } },
                             onClick = {
                                 if (option.image == null) model.changeSkin(option.skin)
@@ -84,6 +90,9 @@ internal fun TimetableAppearance(model: TimetableViewModel, aspectRatio: Float, 
             if (model.message.isNotEmpty()) Text(model.message, color = MaterialTheme.colorScheme.error)
         }
     }
+    backgrounds.find { backgroundKey(it.skin, it.image) == editing }?.let { option ->
+        BackgroundTextColorDialog(model, option.skin, option.image, option.label) { editing = null; model.clearMessage() }
+    }
     source?.let { value ->
         WallpaperCropEditor(Uri.parse(value), aspectRatio, model.busy, model.message,
             onDismiss = { source = null },
@@ -92,15 +101,22 @@ internal fun TimetableAppearance(model: TimetableViewModel, aspectRatio: Float, 
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun SkinOption(skin: TimetableSkin, image: String?, selected: Boolean, enabled: Boolean,
-    modifier: Modifier, label: String = skin.label, onRemove: (() -> Unit)? = null, onClick: () -> Unit) {
+    modifier: Modifier, label: String = skin.label, colors: BackgroundTextColors,
+    onLongClick: () -> Unit, onRemove: (() -> Unit)? = null, onClick: () -> Unit) {
     val shape = RoundedCornerShape(14.dp)
     Column(modifier.clip(shape).border(if (selected) 2.dp else 1.dp,
         if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, shape)
-        .clickable(enabled = enabled, onClick = onClick).padding(6.dp)) {
+        .combinedClickable(enabled = enabled, onClick = onClick, onLongClick = onLongClick,
+            onLongClickLabel = "设置文字颜色").padding(6.dp)) {
         Box(Modifier.fillMaxWidth().height(128.dp).clip(RoundedCornerShape(10.dp))) {
             TimetableWallpaper(skin, image, Modifier.fillMaxSize())
-            Row(Modifier.fillMaxSize().padding(12.dp),
+            Text("一    二    三    四    五", Modifier.align(Alignment.TopCenter).padding(top = 6.dp),
+                color = Color(colors.header), style = MaterialTheme.typography.labelSmall)
+            Text("1\n08:00", Modifier.padding(start = 5.dp, top = 34.dp), color = Color(colors.time),
+                style = MaterialTheme.typography.labelSmall)
+            Row(Modifier.fillMaxSize().padding(start = 30.dp, top = 32.dp, end = 10.dp, bottom = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 courseColors.take(3).forEachIndexed { index, color ->
                     Box(Modifier.weight(1f).padding(top = (index * 13).dp)
