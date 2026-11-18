@@ -37,6 +37,8 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerInputChange
@@ -60,19 +62,21 @@ internal fun EventList(
     onOpen: (Event) -> Unit,
     onToggle: (Event, Boolean) -> Unit,
     onMove: (String, String) -> Unit,
+    allowReorder: Boolean = true,
+    wallpaperInk: Color? = null,
 ) {
     if (events.isEmpty()) {
         Text(
             "这天暂无事件",
             modifier = Modifier.padding(20.dp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = wallpaperInk ?: MaterialTheme.colorScheme.onSurfaceVariant,
         )
         return
     }
     val (completed, pending) = events.partition { it.completed }
     val listState = rememberLazyListState()
     val latestPending by rememberUpdatedState(pending.associateBy(Event::id))
-    val latestEnabled by rememberUpdatedState(enabled)
+    val latestEnabled by rememberUpdatedState(enabled && allowReorder)
     val latestOnMove by rememberUpdatedState(onMove)
     val autoScrollZone = with(LocalDensity.current) { 54.dp.toPx() }
     val maxScroll = with(LocalDensity.current) { 8.dp.toPx() }
@@ -141,10 +145,10 @@ internal fun EventList(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(bottom = 88.dp),
         ) {
-            if (pending.isNotEmpty()) item { SectionLabel("待完成 · ${pending.size}") }
+            if (pending.isNotEmpty()) item { SectionLabel("待完成 · ${pending.size}", wallpaperInk) }
             items(pending, key = { it.id }) { event ->
                 val index = pending.indexOf(event)
-                val reorderActions = if (enabled) buildList {
+                val reorderActions = if (enabled && allowReorder) buildList {
                     pending.getOrNull(index - 1)?.let { previous ->
                         add(CustomAccessibilityAction("上移") { onMove(event.id, previous.id); true })
                     }
@@ -155,12 +159,13 @@ internal fun EventList(
                 EventRow(
                     event, enabled, onOpen, onToggle,
                     modifier = Modifier.animateItem().alpha(if (drag?.event?.id == event.id) 0.22f else 1f),
-                    showHandle = pending.size > 1,
+                    showHandle = allowReorder && pending.size > 1,
                     reorderActions = reorderActions,
+                    wallpaperInk = wallpaperInk,
                 )
             }
-            if (completed.isNotEmpty()) item { SectionLabel("已完成 · ${completed.size}") }
-            items(completed, key = { it.id }) { EventRow(it, enabled, onOpen, onToggle) }
+            if (completed.isNotEmpty()) item { SectionLabel("已完成 · ${completed.size}", wallpaperInk) }
+            items(completed, key = { it.id }) { EventRow(it, enabled, onOpen, onToggle, wallpaperInk = wallpaperInk) }
         }
         drag?.let { current ->
             EventRow(
@@ -169,6 +174,7 @@ internal fun EventList(
                     .clearAndSetSemantics {},
                 showHandle = true,
                 dragging = true,
+                wallpaperInk = wallpaperInk,
             )
         }
     }
@@ -196,12 +202,12 @@ private suspend fun AwaitPointerEventScope.awaitHandleDrag(
 }
 
 @Composable
-private fun SectionLabel(label: String) {
+private fun SectionLabel(label: String, wallpaperInk: Color? = null) {
     Text(
         label,
         Modifier.padding(top = 8.dp, bottom = 2.dp),
         style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        color = wallpaperInk ?: MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }
 
@@ -215,10 +221,14 @@ private fun EventRow(
     showHandle: Boolean = false,
     dragging: Boolean = false,
     reorderActions: List<CustomAccessibilityAction> = emptyList(),
+    wallpaperInk: Color? = null,
 ) {
+    val cardColor = if (wallpaperInk == null) null else
+        if (wallpaperInk.luminance() < .5f) Color.White.copy(alpha = .87f) else Color(0xFF151A24).copy(alpha = .82f)
     Surface(
         modifier = modifier.semantics { customActions = reorderActions },
-        color = if (event.completed) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+        color = cardColor ?: if (event.completed) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+        contentColor = wallpaperInk ?: MaterialTheme.colorScheme.onSurface,
         shape = MaterialTheme.shapes.large,
         shadowElevation = if (dragging) 8.dp else 0.dp,
     ) {
@@ -245,7 +255,7 @@ private fun EventRow(
                     listOf(event.type.label, event.time.takeIf { it.isNotBlank() }?.let(::eventTimeLabel))
                         .filterNotNull().joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = wallpaperInk?.copy(alpha = .8f) ?: MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             if (showHandle) {

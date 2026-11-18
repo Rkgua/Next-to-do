@@ -2,6 +2,8 @@ package com.nexttodo.app
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -42,6 +44,9 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -79,12 +84,26 @@ internal fun TodayScreen(
     model: EventViewModel,
     onOpen: (Event) -> Unit,
     onAdd: () -> Unit,
+    onEnterFocus: () -> Unit,
 ) {
     val today = LocalDate.now()
     val eventsByDay = model.events.groupBy { it.calendarDay ?: today }
     Column(Modifier.fillMaxSize()) {
         DateSelector(selectedDay, today, eventsByDay.mapValues { it.value.size }, onDayChange)
-        Box(Modifier.weight(1f).fillMaxWidth()) {
+        val enterFocus by rememberUpdatedState(onEnterFocus)
+        Box(Modifier.weight(1f).fillMaxWidth()
+            .semantics { customActions = listOf(CustomAccessibilityAction("打开 Today 全屏") { enterFocus(); true }) }
+            .pointerInput(Unit) { detectTapGestures(onDoubleTap = { enterFocus() }) }
+            .pointerInput(Unit) {
+                var distance = 0f
+                var opened = false
+                detectVerticalDragGestures(onDragStart = { distance = 0f; opened = false },
+                    onVerticalDrag = { change, amount ->
+                        distance += amount
+                        if (!opened && distance < -56.dp.toPx()) { opened = true; enterFocus() }
+                        change.consume()
+                    })
+            }) {
             when {
                 model.loadingFailed -> Button(
                     onClick = model::reload,

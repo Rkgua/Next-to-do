@@ -26,6 +26,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -37,6 +38,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -56,6 +59,8 @@ internal fun ProfileSettings(
     updates: AppUpdateViewModel,
     onThemeChange: (AppTheme) -> Unit,
     onOpenPomodoro: () -> Unit,
+    todayAppearance: TodayAppearanceViewModel,
+    timetable: TimetableViewModel,
 ) {
     Column(
         Modifier.verticalScroll(rememberScrollState()).padding(bottom = 20.dp),
@@ -80,6 +85,18 @@ internal fun ProfileSettings(
                     )
                 }
             }
+            HorizontalDivider()
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("课表与 Today 背景同步")
+                    Text(if (todayAppearance.synced) "Today 跟随当前课表背景" else "Today 单独设置背景",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(checked = todayAppearance.synced, enabled = !todayAppearance.busy && !timetable.busy && timetable.ready,
+                    modifier = Modifier.semantics { contentDescription = "课表与 Today 背景同步" },
+                    onCheckedChange = { todayAppearance.setSynced(it, timetable.selected) })
+            }
+            if (todayAppearance.message.isNotEmpty()) Text(todayAppearance.message, color = MaterialTheme.colorScheme.error)
         }
     }
 }
