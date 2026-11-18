@@ -63,8 +63,8 @@ internal fun TimetableControls(
         val shape = RoundedCornerShape(18.dp)
         Surface(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 15.dp)
-                .border(1.dp, Color(0xFFCBCAD4), shape),
-            shape = shape, color = Color(0xFFF8F6FC).copy(alpha = .96f),
+                .border(1.dp, if (timetableDark) timetableOutline else Color(0xFFCBCAD4), shape),
+            shape = shape, color = (if (timetableDark) timetableSurface else Color(0xFFF8F6FC)).copy(alpha = .96f),
         ) {
             Column(Modifier.padding(horizontal = 15.dp, vertical = 10.dp)) {
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -195,7 +195,7 @@ private fun WeekSlider(week: Int, count: Int, enabled: Boolean, onWeek: (Int) ->
         enabled = enabled,
         colors = SliderDefaults.colors(
             thumbColor = timetableAccent, activeTrackColor = timetableAccent,
-            inactiveTrackColor = Color(0xFFDCDEF7),
+            inactiveTrackColor = if (timetableDark) timetableOutline else Color(0xFFDCDEF7),
         ),
     )
 }

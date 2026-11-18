@@ -33,6 +33,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -55,6 +56,8 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.vector.PathParser
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -67,14 +70,26 @@ import androidx.compose.ui.unit.sp
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
-internal val timetableTop = Color(0xFFE4E5F0)
-internal val timetableBottom = Color(0xFFC3D1E5)
-internal val timetableInk = Color(0xFF17171C)
-internal val timetableAccent = Color(0xFF4A5D87)
+internal val timetableDark: Boolean
+    @Composable get() = MaterialTheme.colorScheme.background.luminance() < .5f
+internal val timetableTop: Color
+    @Composable get() = if (timetableDark) MaterialTheme.colorScheme.background else Color(0xFFE4E5F0)
+internal val timetableBottom: Color
+    @Composable get() = if (timetableDark) MaterialTheme.colorScheme.background else Color(0xFFC3D1E5)
+internal val timetableInk: Color
+    @Composable get() = if (timetableDark) Color(0xFFF1F1F4) else Color(0xFF17171C)
+internal val timetableAccent: Color
+    @Composable get() = if (timetableDark) MaterialTheme.colorScheme.primary else Color(0xFF4A5D87)
+internal val timetableMuted: Color
+    @Composable get() = if (timetableDark) Color(0xFF96989F) else Color(0xFF56606B)
+internal val timetableSurface: Color
+    @Composable get() = if (timetableDark) MaterialTheme.colorScheme.surface else Color.White
+internal val timetableOutline: Color
+    @Composable get() = if (timetableDark) Color(0xFF50525B) else Color(0xFFF0F0F0)
 internal val timetableFont = FontFamily.Serif
 internal val courseColors = listOf(
-    Color(0xFFEE7B9B), Color(0xFFE7B576), Color(0xFF83ADEF),
-    Color(0xFFE6917A), Color(0xFF70BFC8), Color(0xFF789DBF), Color(0xFFAE92D4),
+    Color(0xFF72B8A5), Color(0xFF73B8D4), Color(0xFF83ADEF),
+    Color(0xFF8E9BD5), Color(0xFF70BFC8), Color(0xFF789DBF), Color(0xFFA394CE),
 )
 internal val timetableDays = listOf("一", "二", "三", "四", "五", "六", "日")
 private val periodTimes = listOf(
@@ -154,7 +169,7 @@ internal fun TimetableScreen(model: TimetableViewModel) {
                         expanded = importing,
                         onDismissRequest = { importing = false },
                         shape = RoundedCornerShape(16.dp),
-                        containerColor = Color.White,
+                        containerColor = timetableSurface,
                         modifier = Modifier.width(184.dp),
                     ) {
                         DropdownMenuItem(
@@ -165,7 +180,7 @@ internal fun TimetableScreen(model: TimetableViewModel) {
                                 excel.launch(TimetableFormat.EXCEL.mimeTypes.toList().toTypedArray())
                             },
                         )
-                        HorizontalDivider(color = Color(0xFFF1F1F1))
+                        HorizontalDivider(color = timetableOutline)
                         DropdownMenuItem(
                             text = { TableText("HTML导入", 15) },
                             leadingIcon = { TableIcon(TableGlyph.HTML) },
@@ -278,13 +293,18 @@ private fun WeekDates(monday: LocalDate, today: LocalDate) {
             val date = monday.plusDays(index.toLong())
             val selected = date == today
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                val color = if (selected) timetableInk else Color(0xFF858C97)
+                val color = if (selected) timetableInk else if (timetableDark) timetableMuted else Color(0xFF858C97)
                 TableText(label, 10, color)
                 Box(
                     Modifier.size(20.dp).clip(RoundedCornerShape(4.dp))
-                        .background(if (selected) Color(0xFF2A2D32) else Color.Transparent),
+                        .background(if (selected) {
+                            if (timetableDark) Color(0xFFD0D1D7) else Color(0xFF2A2D32)
+                        } else Color.Transparent),
                     contentAlignment = Alignment.Center,
-                ) { TableText("${date.dayOfMonth}", 10, if (selected) Color.White else color) }
+                ) {
+                    TableText("${date.dayOfMonth}", 10,
+                        if (selected) { if (timetableDark) Color(0xFF1D1E22) else Color.White } else color)
+                }
             }
         }
     }
@@ -310,8 +330,8 @@ private fun WeekGrid(
                     ) {
                         TableText("${index + 1}", 12, bold = true)
                         periodTimes.getOrNull(index)?.let { (start, end) ->
-                            TableText(start, 8, Color(0xFF56606B), Modifier.padding(top = 3.dp))
-                            TableText(end, 8, Color(0xFF56606B))
+                            TableText(start, 8, timetableMuted, Modifier.padding(top = 3.dp))
+                            TableText(end, 8, timetableMuted)
                         }
                     }
                 }
@@ -373,7 +393,9 @@ private fun CourseBlock(
     course: CourseSlot, active: Boolean, enabled: Boolean, courseCount: Int, modifier: Modifier, onClick: () -> Unit,
 ) {
     val shape = RoundedCornerShape(5.dp)
-    val fill = course.displayColor().copy(alpha = if (active) 1f else .40f)
+    val base = course.displayColor()
+    val nightFill = lerp(base, Color(0xFF0C1428), .55f)
+    val fill = (if (timetableDark) nightFill else base).copy(alpha = if (active) 1f else .40f)
     Box(
         modifier.padding(1.25.dp).clip(shape).background(fill)
             .border(1.dp, Color.White.copy(alpha = if (active) .7f else .38f), shape)

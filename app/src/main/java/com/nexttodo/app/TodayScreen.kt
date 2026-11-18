@@ -39,6 +39,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
@@ -53,6 +54,14 @@ import java.time.temporal.ChronoUnit
 
 private val monthFormat = DateTimeFormatter.ofPattern("yyyy年M月")
 internal val dayFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("M月d日")
+internal val todayHeaderBackground: Color
+    @Composable get() = if (MaterialTheme.colorScheme.background.luminance() < .5f) {
+        MaterialTheme.colorScheme.surface
+    } else MaterialTheme.colorScheme.primary
+private val todayHeaderForeground: Color
+    @Composable get() = if (MaterialTheme.colorScheme.background.luminance() < .5f) {
+        MaterialTheme.colorScheme.onSurface
+    } else MaterialTheme.colorScheme.onPrimary
 private val weekdays = listOf("一", "二", "三", "四", "五", "六", "日")
 private val calendarStart = LocalDate.of(1900, 1, 1)
 private val calendarSize = ChronoUnit.DAYS.between(calendarStart, LocalDate.of(2201, 1, 1)).toInt()
@@ -117,9 +126,15 @@ private fun DateSelector(
     eventCounts: Map<LocalDate, Int>,
     onDayChange: (LocalDate) -> Unit,
 ) {
-    val blue = MaterialTheme.colorScheme.primary
-    val foreground = MaterialTheme.colorScheme.onPrimary
+    val blue = todayHeaderBackground
+    val foreground = todayHeaderForeground
     val state = rememberPagerState(initialPage = pageFor(selectedDay)) { calendarSize }
+    val daysFromToday = ChronoUnit.DAYS.between(today, dayFor(state.currentPage))
+    val relativeDayLabel = when {
+        daysFromToday > 0 -> "距离 $daysFromToday 天"
+        daysFromToday < 0 -> "已过 ${-daysFromToday} 天"
+        else -> "今天"
+    }
     val changeDay by rememberUpdatedState(onDayChange)
     LaunchedEffect(state) {
         snapshotFlow { state.settledPage }.collect { changeDay(dayFor(it)) }
@@ -147,7 +162,7 @@ private fun DateSelector(
                     modifier = Modifier.weight(1f),
                 )
                 TextButton(onClick = { state.requestScrollToPage(pageFor(today)) }) {
-                    Text("今天", color = foreground)
+                    Text(relativeDayLabel, color = foreground)
                 }
             }
             BoxWithConstraints(Modifier.fillMaxWidth().height(116.dp)) {

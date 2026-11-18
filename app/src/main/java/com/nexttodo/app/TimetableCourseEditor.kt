@@ -58,10 +58,14 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
 
-private val editorBackground = Color(0xFFF6F6F6)
-private val editorPink = Color(0xFFD9476D)
-private val editorHint = Color(0xFFA5A5A5)
-private val editorValue = Color(0xFF606060)
+private val editorBackground: Color
+    @Composable get() = if (timetableDark) timetableTop else Color(0xFFF6F6F6)
+private val editorPink: Color
+    @Composable get() = if (timetableDark) timetableAccent else Color(0xFFD9476D)
+private val editorHint: Color
+    @Composable get() = if (timetableDark) timetableMuted else Color(0xFFA5A5A5)
+private val editorValue: Color
+    @Composable get() = if (timetableDark) Color(0xFFC0C2CB) else Color(0xFF606060)
 private val editorShape = RoundedCornerShape(13.dp)
 
 private data class CoursePeriod(
@@ -138,10 +142,11 @@ internal fun CourseEditor(
     ) {
         val view = LocalView.current
         val window = (view.parent as DialogWindowProvider).window
+        val dark = timetableDark
         SideEffect {
             WindowCompat.getInsetsController(window, view).apply {
-                isAppearanceLightStatusBars = true
-                isAppearanceLightNavigationBars = true
+                isAppearanceLightStatusBars = !dark
+                isAppearanceLightNavigationBars = !dark
             }
         }
         Column(Modifier.fillMaxSize().background(editorBackground).windowInsetsPadding(WindowInsets.safeDrawing)) {
@@ -164,7 +169,7 @@ internal fun CourseEditor(
                                 )
                             })
                         },
-                    color = Color.White,
+                    color = timetableSurface,
                 ) {
                     TableText(
                         "保存", 15, if (name.isNotBlank() && !busy) editorPink else editorHint,
@@ -175,7 +180,7 @@ internal fun CourseEditor(
             Column(
                 Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 6.dp),
             ) {
-                Surface(shape = editorShape, color = Color.White) {
+                Surface(shape = editorShape, color = timetableSurface) {
                     Column(Modifier.padding(horizontal = 16.dp)) {
                         BasicTextField(
                             value = name, onValueChange = { name = it }, singleLine = true, enabled = !busy,
@@ -221,7 +226,7 @@ internal fun CourseEditor(
                             enabled = !busy && (periods.size > 1 || course != null),
                         ) { TableText("删除", 13, if (periods.size > 1 || course != null) timetableInk else editorHint) }
                     }
-                    Surface(shape = editorShape, color = Color.White) {
+                    Surface(shape = editorShape, color = timetableSurface) {
                         Column(Modifier.padding(horizontal = 16.dp)) {
                             val weeks = if (period.weeks.isBlank()) "每周" else "第${period.weeks.removeSuffix("周")}周"
                             val slots = period.day?.let { "周${timetableDays[it - 1]}　 第${period.first} - ${period.last}节" }
@@ -318,7 +323,7 @@ internal fun CourseEditor(
 }
 
 @Composable
-private fun EditorDivider() = HorizontalDivider(color = Color(0xFFF0F0F0))
+private fun EditorDivider() = HorizontalDivider(color = timetableOutline)
 
 @Composable
 private fun EditorRow(

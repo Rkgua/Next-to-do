@@ -124,23 +124,30 @@ private val LightColors = lightColorScheme(
 )
 
 private val DarkColors = darkColorScheme(
-    primary = Color(0xFF79BCFF),
-    onPrimary = Color(0xFF062845),
-    primaryContainer = Color(0xFF20394E),
-    onPrimaryContainer = Color(0xFFD5EBFF),
-    secondary = Color(0xFFA8C9E8),
-    onSecondary = Color(0xFF14344F),
-    secondaryContainer = Color(0xFF243E54),
-    onSecondaryContainer = Color(0xFFD9EBFB),
-    background = Color(0xFF101B26),
-    surface = Color(0xFF182736),
-    onBackground = Color(0xFFE6EFF7),
-    onSurface = Color(0xFFE6EFF7),
-    surfaceVariant = Color(0xFF213547),
-    onSurfaceVariant = Color(0xFFBACEE0),
-    outline = Color(0xFF879EB2),
-    outlineVariant = Color(0xFF3D556A),
-    surfaceContainerHigh = Color(0xFF233548),
+    primary = Color(0xFF6E9BFA),
+    onPrimary = Color.Black,
+    primaryContainer = Color(0xFF303034),
+    onPrimaryContainer = Color(0xFFE5E5E9),
+    secondary = Color(0xFF8DABCA),
+    onSecondary = Color.Black,
+    secondaryContainer = Color(0xFF303034),
+    onSecondaryContainer = Color(0xFFE5E5E9),
+    background = Color.Black,
+    surface = Color(0xFF1C1C1E),
+    onBackground = Color(0xFFE8E8EC),
+    onSurface = Color(0xFFE8E8EC),
+    surfaceVariant = Color(0xFF29292D),
+    onSurfaceVariant = Color(0xFFB8B8BF),
+    outline = Color(0xFF818188),
+    outlineVariant = Color(0xFF3D3D43),
+    surfaceTint = Color.Transparent,
+    surfaceDim = Color.Black,
+    surfaceBright = Color(0xFF353539),
+    surfaceContainerLowest = Color.Black,
+    surfaceContainerLow = Color(0xFF141416),
+    surfaceContainer = Color(0xFF1C1C1E),
+    surfaceContainerHigh = Color(0xFF252528),
+    surfaceContainerHighest = Color(0xFF303034),
 )
 
 private enum class Tab(val label: String, val title: String, val icon: Int) {
@@ -175,8 +182,8 @@ private fun NextToDo(
     SideEffect {
         WindowCompat.getInsetsController(window, window.decorView).apply {
             isAppearanceLightStatusBars = when {
-                showingToday -> dark
-                showingTimetable -> true
+                showingToday -> false
+                showingTimetable -> !dark
                 else -> !dark
             }
             isAppearanceLightNavigationBars = !dark
@@ -221,7 +228,7 @@ private fun NextToDo(
     Scaffold(
         modifier = Modifier.background(
             when {
-                showingToday -> MaterialTheme.colorScheme.primary
+                showingToday -> todayHeaderBackground
                 showingTimetable -> timetableTop
                 else -> MaterialTheme.colorScheme.background
             }
