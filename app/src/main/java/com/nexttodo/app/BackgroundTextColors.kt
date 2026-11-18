@@ -160,7 +160,8 @@ private fun BackgroundTextSizeEditor(model: TimetableViewModel, skin: TimetableS
 @Composable
 private fun TextSizeSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, Modifier.width(72.dp), style = MaterialTheme.typography.bodySmall)
+        // Align the label with the track; the number bubble sits above it.
+        Text(label, Modifier.width(72.dp).padding(top = 19.2.dp), style = MaterialTheme.typography.bodySmall)
         Box(Modifier.weight(1f)) {
             NumberBubbleSlider("$label 大小", value, range, Modifier.fillMaxWidth(.6f), onChange)
         }
