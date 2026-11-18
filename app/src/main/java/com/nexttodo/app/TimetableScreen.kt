@@ -49,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -59,6 +60,8 @@ import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
@@ -124,11 +127,13 @@ internal fun TimetableScreen(model: TimetableViewModel) {
     }
     var importing by remember { mutableStateOf(false) }
     var controls by rememberSaveable { mutableStateOf(false) }
+    var appearance by rememberSaveable(table.id) { mutableStateOf(false) }
+    var viewport by remember { mutableStateOf(IntSize.Zero) }
     var editIndex by rememberSaveable(table.id) { mutableStateOf<Int?>(null) }
     var overlappingIndices by rememberSaveable(table.id) { mutableStateOf<IntArray?>(null) }
 
-    LaunchedEffect(model.message, editIndex) {
-        if (model.message.isNotEmpty() && editIndex == null) {
+    LaunchedEffect(model.message, editIndex, appearance) {
+        if (model.message.isNotEmpty() && editIndex == null && !appearance) {
             snackbar.showSnackbar(model.message)
             model.clearMessage()
         }
@@ -143,9 +148,10 @@ internal fun TimetableScreen(model: TimetableViewModel) {
     val periodCount = maxOf(12, table.courses.filter { it.inGrid() }.maxOfOrNull { it.lastPeriod!! } ?: 0)
     val enabled = model.ready && !model.busy && model.preview == null
     Box(
-        Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(timetableTop, timetableBottom))),
+        Modifier.fillMaxSize().background(timetableTop).onSizeChanged { viewport = it },
     ) {
-        Column {
+        TimetableWallpaper(table.skin, table.backgroundImage, Modifier.matchParentSize())
+        Column(Modifier.fillMaxSize()) {
             Row(
                 Modifier.fillMaxWidth().heightIn(min = 46.dp).padding(start = 12.dp, end = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -202,11 +208,7 @@ internal fun TimetableScreen(model: TimetableViewModel) {
             }
             WeekDates(monday, today)
             Column(Modifier.fillMaxSize().verticalScroll(gridScroll)) {
-                HorizontalPager(
-                    state = pager,
-                    modifier = Modifier.fillMaxWidth(),
-                    beyondViewportPageCount = 0,
-                ) { page ->
+                HorizontalPager(state = pager, modifier = Modifier.fillMaxWidth(), beyondViewportPageCount = 0) { page ->
                     WeekGrid(table.courses, page + 1, periodCount, enabled) {
                         model.clearMessage()
                         if (it.size == 1) editIndex = table.courses.indexOf(it.single())
@@ -220,9 +222,16 @@ internal fun TimetableScreen(model: TimetableViewModel) {
                 model = model, today = today, week = week, count = count,
                 onWeek = { requested -> pager.requestScrollToPage(requested - 1) },
                 onDismiss = { controls = false },
+                onAppearance = { controls = false; appearance = true; model.clearMessage() },
             )
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
+    }
+
+    if (appearance) {
+        TimetableAppearance(model,
+            if (viewport.height > 0) viewport.width.toFloat() / viewport.height else .5f,
+            onDismiss = { appearance = false; model.clearMessage() })
     }
 
     overlappingIndices?.let { indices ->

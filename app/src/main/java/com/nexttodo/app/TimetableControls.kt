@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -51,6 +52,7 @@ internal fun TimetableControls(
     count: Int,
     onWeek: (Int) -> Unit,
     onDismiss: () -> Unit,
+    onAppearance: () -> Unit,
 ) {
     var dialog by rememberSaveable { mutableStateOf<String?>(null) }
     val enabled = !model.busy
@@ -115,6 +117,13 @@ internal fun TimetableControls(
                             )
                         }
                     }
+                }
+                HorizontalDivider(Modifier.padding(top = 12.dp), color = timetableOutline)
+                Row(Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onAppearance)
+                    .padding(vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    TableIcon(TableGlyph.COLOR, timetableAccent)
+                    TableText("课表外观", 14, modifier = Modifier.weight(1f).padding(start = 10.dp))
+                    TableIcon(TableGlyph.NEXT, timetableMuted, 16.dp)
                 }
             }
         }

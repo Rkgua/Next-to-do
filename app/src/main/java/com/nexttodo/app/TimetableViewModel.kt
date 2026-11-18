@@ -35,6 +35,8 @@ internal data class Timetable(
     val name: String,
     val firstDay: LocalDate,
     val courses: List<CourseSlot>,
+    val skin: TimetableSkin = TimetableSkin.DEFAULT,
+    val backgroundImage: String? = null,
 ) {
     fun currentWeek(today: LocalDate = LocalDate.now()): Int =
         ChronoUnit.WEEKS.between(firstDay.monday(), today.monday()).toInt() + 1
@@ -110,6 +112,9 @@ internal class TimetableViewModel(application: Application) : AndroidViewModel(a
                             it.getString("name"),
                             LocalDate.parse(it.getString("firstDay")),
                             it.getJSONArray("courses").readCourses(),
+                            TimetableSkin.entries.firstOrNull { skin -> skin.name == it.optString("skin") }
+                                ?: TimetableSkin.DEFAULT,
+                            it.optString("backgroundImage").takeIf(String::isNotBlank),
                         )
                     }
                 }
@@ -140,6 +145,11 @@ internal class TimetableViewModel(application: Application) : AndroidViewModel(a
 
     fun clearMessage() {
         message = ""
+    }
+
+    fun changeSkin(skin: TimetableSkin) = runOperation("无法保存课表外观，请重试") {
+        require(skin != TimetableSkin.CUSTOM || selected.backgroundImage != null) { "请先导入背景图片" }
+        update(selected.copy(skin = skin))
     }
 
     fun closePreview() {
@@ -212,6 +222,7 @@ internal class TimetableViewModel(application: Application) : AndroidViewModel(a
             JSONObject().put("id", table.id).put("name", table.name)
                 .put("firstDay", table.firstDay.toString())
                 .put("courses", JSONArray(table.courses.map(CourseSlot::toJson)))
+                .put("skin", table.skin.name).put("backgroundImage", table.backgroundImage.orEmpty())
         })
         check(preferences.edit().putString("tables", data.toString()).putString("selectedTable", id).commit())
     }
