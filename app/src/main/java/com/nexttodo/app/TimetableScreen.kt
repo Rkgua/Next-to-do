@@ -369,7 +369,8 @@ private data class CourseGroup(val first: Int, val last: Int, val courses: List<
 private fun groupOverlappingCourses(courses: List<CourseSlot>, week: Int): List<CourseGroup> {
     val (active, inactive) = courses.partition { it.takesPlaceIn(week) }
     val visible = active + inactive.filter { other ->
-        active.none { it.firstPeriod!! <= other.lastPeriod!! && other.firstPeriod!! <= it.lastPeriod!! }
+        other.hasFutureOccurrence(week) &&
+            active.none { it.firstPeriod!! <= other.lastPeriod!! && other.firstPeriod!! <= it.lastPeriod!! }
     }
     return buildList {
         val group = mutableListOf<CourseSlot>()

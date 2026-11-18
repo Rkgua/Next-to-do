@@ -75,6 +75,9 @@ internal fun CourseSlot.takesPlaceIn(week: Int): Boolean {
     }
 }
 
+internal fun CourseSlot.hasFutureOccurrence(week: Int): Boolean =
+    ((week + 1)..MAX_TIMETABLE_WEEKS).any { takesPlaceIn(it) }
+
 internal class TimetableViewModel(application: Application) : AndroidViewModel(application) {
     private val preferences = application.getSharedPreferences("timetable", Context.MODE_PRIVATE)
     private val initial = Timetable("default", "未命名", LocalDate.now().monday(), emptyList())
