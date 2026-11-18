@@ -117,7 +117,8 @@ private fun CourseSlot.inGrid() = weekday != null && firstPeriod != null &&
 
 @Composable
 internal fun TimetableScreen(model: TimetableViewModel, previewTable: Timetable? = null, isPreview: Boolean = false,
-    initialWeek: Int? = null, onHideNavigation: () -> Unit = {}, onToggleNavigation: () -> Unit = {}) {
+    initialWeek: Int? = null, bottomContentPadding: Dp = 0.dp,
+    onHideNavigation: () -> Unit = {}, onToggleNavigation: () -> Unit = {}) {
     val today = LocalDate.now()
     val table = previewTable ?: model.selected
     val currentWeek = table.currentWeek(today)
@@ -237,7 +238,7 @@ internal fun TimetableScreen(model: TimetableViewModel, previewTable: Timetable?
             }) {
                 Column(Modifier.fillMaxSize()) {
                     WeekDates(monday, today, Color(textColors.header), textLayout)
-                    Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(gridScroll)) {
+                    Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(gridScroll).padding(bottom = bottomContentPadding)) {
                         HorizontalPager(
                             state = pager,
                             modifier = Modifier.fillMaxWidth(),

@@ -8,8 +8,13 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.lifecycle.ViewModelProvider
@@ -29,6 +34,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.Button
@@ -54,6 +60,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
@@ -252,14 +259,11 @@ private fun NextToDo(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            if (!keyboardVisible) {
-                AnimatedVisibility(visible = !showingTimetable || timetableTabsVisible,
-                    enter = expandVertically(), exit = shrinkVertically()) {
-                    BottomTabs(tab, dark) {
-                        detailId = null
-                        showingPomodoro = false
-                        tab = it
-                    }
+            if (!keyboardVisible && !showingTimetable) {
+                BottomTabs(tab, dark) {
+                    detailId = null
+                    showingPomodoro = false
+                    tab = it
                 }
             }
         },
@@ -285,9 +289,22 @@ private fun NextToDo(
             return@Scaffold
         }
         if (showingTimetable) {
-            Box(Modifier.fillMaxSize().padding(padding)) {
-                TimetableScreen(timetable, onHideNavigation = { timetableTabsVisible = false },
+            // The wallpaper and course viewport keep a fixed size. Only the overlaid bar moves.
+            Box(Modifier.fillMaxSize().padding(top = padding.calculateTopPadding()).clipToBounds()) {
+                TimetableScreen(timetable,
+                    bottomContentPadding = 68.dp + WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding(),
+                    onHideNavigation = { timetableTabsVisible = false },
                     onToggleNavigation = { timetableTabsVisible = !timetableTabsVisible })
+                AnimatedVisibility(visible = !keyboardVisible && timetableTabsVisible,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    enter = slideInVertically(tween(280, easing = FastOutSlowInEasing)) { it } + fadeIn(tween(180)),
+                    exit = slideOutVertically(tween(190, easing = FastOutLinearInEasing)) { it } + fadeOut(tween(130))) {
+                    BottomTabs(tab, dark) {
+                        detailId = null
+                        showingPomodoro = false
+                        tab = it
+                    }
+                }
             }
             return@Scaffold
         }
