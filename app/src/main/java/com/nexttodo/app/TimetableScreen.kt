@@ -106,7 +106,6 @@ private val periodTimes = listOf(
     "14:00" to "14:45", "14:55" to "15:40", "16:00" to "16:45", "16:55" to "17:40",
     "19:00" to "19:45", "19:55" to "20:40",
 )
-private val timeWidth = 34.dp
 private const val LAST_GRID_PERIOD = 99
 private val dateLabel = DateTimeFormatter.ofPattern("yyyy/M/d")
 
@@ -163,6 +162,8 @@ internal fun TimetableScreen(model: TimetableViewModel, previewTable: Timetable?
     val enabled = !isPreview && model.ready && !model.busy && model.preview == null
     val textColors = table.backgroundTextColors[backgroundKey(table.skin, table.backgroundImage)]
         ?: defaultBackgroundText(table.skin, timetableDark)
+    val textLayout = TimetableTextLayout(textColors, table.style)
+    val gridStyle = table.style.copy(courseFontSp = textLayout.courseFont)
     val toolbarInk = table.style.toolbarTextColor?.let(::Color) ?: table.style.headerBackgroundColor?.let {
         if (Color(it).luminance() > .5f) Color(0xFF17171C) else Color.White
     } ?: if (table.skin != TimetableSkin.DEFAULT) Color(textColors.header) else timetableInk
@@ -180,10 +181,10 @@ internal fun TimetableScreen(model: TimetableViewModel, previewTable: Timetable?
                     val day = timetableDays[today.dayOfWeek.value - 1]
                     Text(
                         if (week == currentWeek) "第${week}周 周$day" else "第${week}周(非本周)",
-                        color = toolbarInk, fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                        color = toolbarInk, fontSize = (textColors.headerSizeSp + 8f).sp, fontWeight = FontWeight.Bold,
                         fontFamily = timetableFont, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )
-                    Text(today.format(dateLabel), color = toolbarInk, fontFamily = timetableFont, fontSize = 12.sp)
+                    Text(today.format(dateLabel), color = toolbarInk, fontFamily = timetableFont, fontSize = (textColors.headerSizeSp + 2f).sp)
                 }
                 IconButton(onClick = { model.clearMessage(); model.clearAiPreview(); aiEditing = true }, enabled = enabled,
                     modifier = Modifier.size(39.dp).semantics { contentDescription = "AI 编辑课表" }) {
@@ -235,14 +236,14 @@ internal fun TimetableScreen(model: TimetableViewModel, previewTable: Timetable?
                 if (!isPreview) detectTapGestures(onTap = { toggleNavigation() })
             }) {
                 Column(Modifier.fillMaxSize()) {
-                    WeekDates(monday, today, Color(textColors.header))
+                    WeekDates(monday, today, Color(textColors.header), textLayout)
                     Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(gridScroll)) {
                         HorizontalPager(
                             state = pager,
                             modifier = Modifier.fillMaxWidth(),
                             beyondViewportPageCount = 0,
                         ) { page ->
-                            WeekGrid(table.courses, page + 1, periodCount, enabled, Color(textColors.time), table.style) {
+                            WeekGrid(table.courses, page + 1, periodCount, enabled, Color(textColors.time), gridStyle, textLayout) {
                                 model.clearMessage()
                                 if (it.size == 1) editIndex = table.courses.indexOf(it.single())
                                 else overlappingIndices = it.map(table.courses::indexOf).toIntArray()
@@ -330,26 +331,27 @@ internal fun TimetableScreen(model: TimetableViewModel, previewTable: Timetable?
 }
 
 @Composable
-private fun WeekDates(monday: LocalDate, today: LocalDate, headerColor: Color) {
-    Row(Modifier.fillMaxWidth().height(43.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.width(timeWidth), horizontalAlignment = Alignment.CenterHorizontally) {
-            TableText("${monday.monthValue}", 10, headerColor, bold = true)
-            TableText("月", 10, headerColor, bold = true)
+private fun WeekDates(monday: LocalDate, today: LocalDate, headerColor: Color, layout: TimetableTextLayout) {
+    val fontSize = layout.colors.headerSizeSp.toInt()
+    Row(Modifier.fillMaxWidth().height(layout.calendarHeight), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.width(layout.timeWidth), horizontalAlignment = Alignment.CenterHorizontally) {
+            TableText("${monday.monthValue}", fontSize, headerColor, bold = true)
+            TableText("月", fontSize, headerColor, bold = true)
         }
         timetableDays.forEachIndexed { index, label ->
             val date = monday.plusDays(index.toLong())
             val selected = date == today
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                 val color = if (selected) headerColor else headerColor.copy(alpha = .85f)
-                TableText(label, 10, color)
+                TableText(label, fontSize, color)
                 Box(
-                    Modifier.size(20.dp).clip(RoundedCornerShape(4.dp))
+                    Modifier.size(layout.dateSize).clip(RoundedCornerShape(4.dp))
                         .background(if (selected) {
                             if (timetableDark) Color(0xFFD0D1D7) else Color(0xFF2A2D32)
                         } else Color.Transparent),
                     contentAlignment = Alignment.Center,
                 ) {
-                    TableText("${date.dayOfMonth}", 10,
+                    TableText("${date.dayOfMonth}", fontSize,
                         if (selected) { if (timetableDark) Color(0xFF1D1E22) else Color.White } else color)
                 }
             }
@@ -365,23 +367,24 @@ private fun WeekGrid(
     enabled: Boolean,
     timeColor: Color,
     style: TimetableStyle,
+    layout: TimetableTextLayout,
     onCourses: (List<CourseSlot>) -> Unit,
 ) {
-    val periodHeight = style.periodHeightDp.dp
+    val periodHeight = layout.periodHeight
     val (scheduled, unscheduled) = remember(courses) { courses.partition { it.inGrid() } }
     val days = remember(scheduled) { scheduled.groupBy { it.weekday } }
     Column {
         Row(Modifier.fillMaxWidth().height(periodHeight * periods)) {
-            Column(Modifier.width(timeWidth)) {
+            Column(Modifier.width(layout.timeWidth)) {
                 repeat(periods) { index ->
                     Column(
                         Modifier.fillMaxWidth().height(periodHeight).padding(top = 11.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        TableText("${index + 1}", 12, timeColor, bold = true)
+                        TableText("${index + 1}", layout.colors.timeSizeSp.toInt() + 4, timeColor, bold = true)
                         periodTimes.getOrNull(index)?.let { (start, end) ->
-                            TableText(start, 8, timeColor, Modifier.padding(top = 3.dp))
-                            TableText(end, 8, timeColor)
+                            TableText(start, layout.colors.timeSizeSp.toInt(), timeColor, Modifier.padding(top = 3.dp))
+                            TableText(end, layout.colors.timeSizeSp.toInt(), timeColor)
                         }
                     }
                 }
@@ -407,8 +410,8 @@ private fun WeekGrid(
             TableText("未指定节次", 14, timeColor, modifier = Modifier.padding(horizontal = 12.dp), bold = true)
             unscheduled.forEach { course ->
                 Column(Modifier.fillMaxWidth().clickable(enabled = enabled) { onCourses(listOf(course)) }.padding(12.dp)) {
-                    TableText(course.name, 14, timeColor)
-                    TableText(courseSummary(course), 10, timeColor.copy(alpha = .85f))
+                    TableText(course.name, layout.courseFont.toInt() + 3, timeColor)
+                    TableText(courseSummary(course), layout.courseFont.toInt(), timeColor.copy(alpha = .85f))
                 }
             }
         }
@@ -503,6 +506,7 @@ internal fun TableText(
 )
 
 internal enum class TableGlyph(val path: String) {
+    BACK("m14 5-7 7 7 7M7 12h14"),
     ADD("M12 3v18M3 12h18"),
     IMPORT("M10 4H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2V9M21 4c-5 0-9 3-9 11m-4-4 4 4 4-4"),
     SHARE("M13 4 22 12 13 19v-5c-5 0-8 2-11 5 0-7 4-11 11-11z"),

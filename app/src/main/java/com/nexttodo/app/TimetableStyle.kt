@@ -83,8 +83,10 @@ internal fun parseTimetableAiDraft(original: Timetable, json: JSONObject, dark: 
     val currentText = original.backgroundTextColors[key] ?: defaultBackgroundText(skin, dark)
     fun textColor(name: String, fallback: Int): Int = if (json.has(name))
         requireNotNull(parseTextColor(json.getString(name))) { "AI 返回了无效的文字颜色" } else fallback
-    val updatedText = BackgroundTextColors(textColor("headerTextColor", currentText.header), textColor("timeTextColor", currentText.time))
-    val textColors = if (json.has("headerTextColor") || json.has("timeTextColor")) original.backgroundTextColors + (key to updatedText)
+    val changesCourseFont = json.optJSONObject("style")?.has("courseFontSp") == true
+    val updatedText = currentText.copy(header = textColor("headerTextColor", currentText.header),
+        time = textColor("timeTextColor", currentText.time), courseSizeSp = if (changesCourseFont) null else currentText.courseSizeSp)
+    val textColors = if (json.has("headerTextColor") || json.has("timeTextColor") || changesCourseFont) original.backgroundTextColors + (key to updatedText)
         else original.backgroundTextColors
     val operations = if (json.has("courseChanges")) json.getJSONArray("courseChanges") else JSONArray()
     require(allowCourseChanges || operations.length() == 0) { "请切换到课程编辑后，再生成课程修改" }

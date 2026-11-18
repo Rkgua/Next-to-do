@@ -15,13 +15,40 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
+import org.json.JSONObject
 
-internal data class BackgroundTextColors(val header: Int, val time: Int)
+internal data class BackgroundTextColors(
+    val header: Int, val time: Int,
+    val headerSizeSp: Float = 10f, val timeSizeSp: Float = 8f, val courseSizeSp: Float? = null,
+) {
+    fun toJson() = JSONObject().put("header", header).put("time", time)
+        .put("headerSizeSp", headerSizeSp).put("timeSizeSp", timeSizeSp)
+        .put("courseSizeSp", courseSizeSp)
+
+    companion object {
+        fun fromJson(json: JSONObject): BackgroundTextColors {
+            fun size(key: String, default: Float, min: Float, max: Float): Float =
+                json.optDouble(key, default.toDouble()).toFloat().let { if (it.isFinite()) it.coerceIn(min, max) else default }
+            return BackgroundTextColors(json.getInt("header"), json.getInt("time"),
+                size("headerSizeSp", 10f, 8f, 18f), size("timeSizeSp", 8f, 7f, 14f),
+                if (json.has("courseSizeSp") && !json.isNull("courseSizeSp")) size("courseSizeSp", 11f, 8f, 18f) else null)
+        }
+    }
+}
+
+internal data class TimetableTextLayout(val colors: BackgroundTextColors, val style: TimetableStyle) {
+    val timeWidth = (34f + (colors.timeSizeSp - 8f).coerceAtLeast(0f) * 3f).dp
+    val calendarHeight = (43f + (colors.headerSizeSp - 10f).coerceAtLeast(0f) * 3f).dp
+    val dateSize = (20f + (colors.headerSizeSp - 10f).coerceAtLeast(0f) * 1.7f).dp
+    val courseFont = colors.courseSizeSp ?: style.courseFontSp
+    val periodHeight = maxOf(style.periodHeightDp * maxOf(1f, courseFont / style.courseFontSp),
+        if (colors.timeSizeSp > 8f) colors.timeSizeSp * 3f + 34f else style.periodHeightDp).dp
+}
 internal val brightBackgroundText = BackgroundTextColors(0xFF253247.toInt(), 0xFF46556A.toInt())
 internal val darkBackgroundText = BackgroundTextColors(0xFFF1F5FC.toInt(), 0xFFD3DEEE.toInt())
 
@@ -41,30 +68,50 @@ internal fun defaultBackgroundText(skin: TimetableSkin, dark: Boolean): Backgrou
 internal fun BackgroundTextColorDialog(model: TimetableViewModel, skin: TimetableSkin, image: String?,
     label: String, onDismiss: () -> Unit) {
     val key = backgroundKey(skin, image)
+    val timetableDarkValue = timetableDark
     val initial = model.selected.backgroundTextColors[key] ?: defaultBackgroundText(skin, timetableDark)
     var header by rememberSaveable(key) { mutableStateOf(initial.header) }
     var time by rememberSaveable(key) { mutableStateOf(initial.time) }
+    var headerSize by rememberSaveable(key) { mutableStateOf(initial.headerSizeSp) }
+    var timeSize by rememberSaveable(key) { mutableStateOf(initial.timeSizeSp) }
+    var courseSize by rememberSaveable(key) { mutableStateOf(initial.courseSizeSp) }
+    var sizing by rememberSaveable(key) { mutableStateOf(false) }
     var field by rememberSaveable(key) { mutableStateOf<String?>(null) }
-    val colors = BackgroundTextColors(header, time)
+    val colors = BackgroundTextColors(header, time, headerSize, timeSize, courseSize)
+    if (sizing) {
+        BackgroundTextSizeEditor(model, skin, image, colors, { sizing = false }) { edited ->
+            headerSize = edited.headerSizeSp; timeSize = edited.timeSizeSp; courseSize = edited.courseSizeSp
+            sizing = false
+        }
+        return
+    }
     AlertDialog(
         onDismissRequest = { if (!model.busy) onDismiss() },
-        title = { Text("$label · 文字颜色") },
+        title = { Text("$label · 文字") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 BackgroundTextPreview(skin, image, colors)
                 Text("通用配色", style = MaterialTheme.typography.titleSmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(colors == brightBackgroundText, { header = brightBackgroundText.header; time = brightBackgroundText.time },
+                    FilterChip(header == brightBackgroundText.header && time == brightBackgroundText.time, { header = brightBackgroundText.header; time = brightBackgroundText.time },
                         label = { Text("亮色背景") }, enabled = !model.busy)
-                    FilterChip(colors == darkBackgroundText, { header = darkBackgroundText.header; time = darkBackgroundText.time },
+                    FilterChip(header == darkBackgroundText.header && time == darkBackgroundText.time, { header = darkBackgroundText.header; time = darkBackgroundText.time },
                         label = { Text("暗色背景") }, enabled = !model.busy)
                 }
                 HorizontalDivider()
                 Text("自定义文字颜色", style = MaterialTheme.typography.titleSmall)
                 TextColorRow("头部文字", header, !model.busy) { field = "header" }
                 TextColorRow("左侧时间", time, !model.busy) { field = "time" }
+                HorizontalDivider()
+                Text("文字大小", style = MaterialTheme.typography.titleSmall)
+                Text("头部 ${headerSize.roundToInt()} · 时间 ${timeSize.roundToInt()} · 课程 ${(courseSize ?: model.selected.style.courseFontSp).roundToInt()}",
+                    style = MaterialTheme.typography.bodySmall)
+                OutlinedButton(enabled = !model.busy, onClick = { sizing = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text("在课表中预览调整")
+                }
                 TextButton(enabled = !model.busy, onClick = {
-                    model.saveBackgroundTextColors(key, null, onDismiss)
+                    val recommended = defaultBackgroundText(skin, timetableDarkValue)
+                    header = recommended.header; time = recommended.time
                 }) { Text("恢复推荐配色") }
                 if (model.message.isNotEmpty()) Text(model.message, color = MaterialTheme.colorScheme.error)
             }
@@ -79,6 +126,43 @@ internal fun BackgroundTextColorDialog(model: TimetableViewModel, skin: Timetabl
             if (editing == "header") header else time, { field = null }) {
             if (editing == "header") header = it else time = it
             field = null
+        }
+    }
+}
+
+@Composable
+private fun BackgroundTextSizeEditor(model: TimetableViewModel, skin: TimetableSkin, image: String?,
+    initial: BackgroundTextColors, onDismiss: () -> Unit, onConfirm: (BackgroundTextColors) -> Unit) {
+    var header by rememberSaveable { mutableStateOf(initial.headerSizeSp) }
+    var time by rememberSaveable { mutableStateOf(initial.timeSizeSp) }
+    var course by rememberSaveable { mutableStateOf(initial.courseSizeSp ?: model.selected.style.courseFontSp) }
+    var courseChanged by rememberSaveable { mutableStateOf(false) }
+    val edited = initial.copy(headerSizeSp = header, timeSizeSp = time,
+        courseSizeSp = if (courseChanged) course else initial.courseSizeSp)
+    val key = backgroundKey(skin, image)
+    val preview = model.selected.copy(skin = skin, backgroundImage = image,
+        backgroundTextColors = model.selected.backgroundTextColors + (key to edited))
+    AppearancePage("文字大小", true, onDismiss, action = {
+        TextButton(onClick = { onConfirm(edited) }) { Text("确定") }
+    }) {
+        Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(8.dp))) {
+            TimetableScreen(model, previewTable = preview, isPreview = true)
+        }
+        Column(Modifier.fillMaxWidth().heightIn(max = 235.dp).verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp, vertical = 8.dp)) {
+            TextSizeSlider("头部文字", header, 8f..18f) { header = it }
+            TextSizeSlider("左侧时间", time, 7f..14f) { time = it }
+            TextSizeSlider("课程文字", course, 8f..18f) { course = it; courseChanged = true }
+        }
+    }
+}
+
+@Composable
+private fun TextSizeSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.width(72.dp), style = MaterialTheme.typography.bodySmall)
+        Box(Modifier.weight(1f)) {
+            NumberBubbleSlider("$label 大小", value, range, Modifier.fillMaxWidth(.6f), onChange)
         }
     }
 }

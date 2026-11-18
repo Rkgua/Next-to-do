@@ -131,7 +131,7 @@ internal class TimetableViewModel(application: Application) : AndroidViewModel(a
                             it.optJSONObject("backgroundTextColors")?.let { colors ->
                                 colors.keys().asSequence().associateWith { key ->
                                     val saved = colors.getJSONObject(key)
-                                    BackgroundTextColors(saved.getInt("header"), saved.getInt("time"))
+                                    BackgroundTextColors.fromJson(saved)
                                 }
                             }.orEmpty(),
                             runCatching { TimetableStyle.fromJson(it.optJSONObject("style")) }.getOrDefault(TimetableStyle()),
@@ -308,7 +308,7 @@ internal class TimetableViewModel(application: Application) : AndroidViewModel(a
                 .put("backgroundImages", JSONArray(table.backgroundImages))
                 .put("style", table.style.toJson())
                 .put("backgroundTextColors", JSONObject(table.backgroundTextColors.mapValues { (_, colors) ->
-                    JSONObject().put("header", colors.header).put("time", colors.time)
+                    colors.toJson()
                 }))
         })
         check(preferences.edit().putString("tables", data.toString()).putString("selectedTable", id).commit())
