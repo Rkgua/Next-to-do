@@ -3,6 +3,7 @@ package com.nexttodo.app
 import android.app.Application
 import android.content.Context
 import android.net.Uri
+import android.graphics.Bitmap
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -13,6 +14,7 @@ import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAdjusters
 import java.util.UUID
+import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -37,6 +39,7 @@ internal data class Timetable(
     val courses: List<CourseSlot>,
     val skin: TimetableSkin = TimetableSkin.DEFAULT,
     val backgroundImage: String? = null,
+    val backgroundImages: List<String> = emptyList(),
 ) {
     fun currentWeek(today: LocalDate = LocalDate.now()): Int =
         ChronoUnit.WEEKS.between(firstDay.monday(), today.monday()).toInt() + 1
@@ -115,6 +118,9 @@ internal class TimetableViewModel(application: Application) : AndroidViewModel(a
                             TimetableSkin.entries.firstOrNull { skin -> skin.name == it.optString("skin") }
                                 ?: TimetableSkin.DEFAULT,
                             it.optString("backgroundImage").takeIf(String::isNotBlank),
+                            it.optJSONArray("backgroundImages")?.let { images ->
+                                List(images.length()) { index -> images.getString(index) }.distinct()
+                            } ?: listOfNotNull(it.optString("backgroundImage").takeIf(String::isNotBlank)),
                         )
                     }
                 }
@@ -150,6 +156,40 @@ internal class TimetableViewModel(application: Application) : AndroidViewModel(a
     fun changeSkin(skin: TimetableSkin) = runOperation("无法保存课表外观，请重试") {
         require(skin != TimetableSkin.CUSTOM || selected.backgroundImage != null) { "请先导入背景图片" }
         update(selected.copy(skin = skin))
+    }
+
+    fun selectBackground(image: String) = runOperation("无法保存课表背景，请重试") {
+        require(image in selected.backgroundImages)
+        update(selected.copy(skin = TimetableSkin.CUSTOM, backgroundImage = image))
+    }
+
+    fun saveBackground(bitmap: Bitmap, crop: WallpaperCrop, onSaved: () -> Unit) =
+        runOperation("无法保存背景图片，请重试") {
+            val table = selected
+            val file = File(getApplication<Application>().filesDir, "wallpaper-${UUID.randomUUID()}.jpg")
+            try {
+                withContext(Dispatchers.IO) {
+                    val output = cropWallpaper(bitmap, crop)
+                    try {
+                        file.outputStream().use { check(output.compress(Bitmap.CompressFormat.JPEG, 92, it)) }
+                    } finally { output.recycle() }
+                }
+                update(table.copy(skin = TimetableSkin.CUSTOM, backgroundImage = file.name,
+                    backgroundImages = table.backgroundImages + file.name))
+            } catch (exception: Exception) {
+                file.delete()
+                throw exception
+            }
+            onSaved()
+        }
+
+    fun removeBackground(image: String) = runOperation("无法移除背景图片，请重试") {
+        val table = selected
+        require(image in table.backgroundImages)
+        update(table.copy(backgroundImages = table.backgroundImages - image,
+            backgroundImage = table.backgroundImage.takeUnless { it == image },
+            skin = if (table.skin == TimetableSkin.CUSTOM && table.backgroundImage == image) TimetableSkin.DEFAULT else table.skin))
+        withContext(Dispatchers.IO) { wallpaperFile(getApplication(), image)?.delete() }
     }
 
     fun closePreview() {
@@ -201,8 +241,12 @@ internal class TimetableViewModel(application: Application) : AndroidViewModel(a
 
     fun removeTable(id: String, onRemoved: () -> Unit) = runOperation("无法删除课表，请重试") {
         require(tables.size > 1) { "请至少保留一张课表" }
+        val images = tables.find { it.id == id }?.backgroundImages.orEmpty()
         val remaining = tables.filterNot { it.id == id }
         persist(remaining, if (selectedId == id) remaining.first().id else selectedId)
+        withContext(Dispatchers.IO) {
+            images.forEach { wallpaperFile(getApplication(), it)?.delete() }
+        }
         onRemoved()
     }
 
@@ -223,6 +267,7 @@ internal class TimetableViewModel(application: Application) : AndroidViewModel(a
                 .put("firstDay", table.firstDay.toString())
                 .put("courses", JSONArray(table.courses.map(CourseSlot::toJson)))
                 .put("skin", table.skin.name).put("backgroundImage", table.backgroundImage.orEmpty())
+                .put("backgroundImages", JSONArray(table.backgroundImages))
         })
         check(preferences.edit().putString("tables", data.toString()).putString("selectedTable", id).commit())
     }
