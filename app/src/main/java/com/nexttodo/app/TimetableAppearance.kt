@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import android.graphics.Paint
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -48,11 +47,12 @@ private data class BackgroundOption(val skin: TimetableSkin, val image: String? 
 internal fun TimetableAppearance(model: TimetableViewModel, aspectRatio: Float, onDismiss: () -> Unit) {
     var source by rememberSaveable { mutableStateOf<String?>(null) }
     var editing by rememberSaveable { mutableStateOf<String?>(null) }
+    var pickerError by rememberSaveable { mutableStateOf("") }
     val backgrounds = TimetableSkin.entries.filter { it != TimetableSkin.CUSTOM }.map { BackgroundOption(it) } +
         model.selected.backgroundImages.mapIndexed { index, image ->
             BackgroundOption(TimetableSkin.CUSTOM, image, "自定义 ${index + 1}")
         }
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    val picker = rememberLauncherForActivityResult(GalleryPicker()) { uri ->
         source = uri?.toString()
     }
     AppearancePage("课表外观", !model.busy, onDismiss) {
@@ -61,7 +61,7 @@ internal fun TimetableAppearance(model: TimetableViewModel, aspectRatio: Float, 
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text("课表背景 · 选择背景", style = MaterialTheme.typography.titleMedium)
-            Text("长按背景可设置头部和左侧时间的文字颜色", style = MaterialTheme.typography.bodySmall,
+            Text("长按背景可设置文字颜色和大小", style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             backgrounds.chunked(2).forEach { options ->
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -83,11 +83,15 @@ internal fun TimetableAppearance(model: TimetableViewModel, aspectRatio: Float, 
             }
             HorizontalDivider()
             Text("添加背景", style = MaterialTheme.typography.titleMedium)
-            Button(onClick = { model.clearMessage(); picker.launch(arrayOf("image/*")) }, enabled = !model.busy,
+            Button(onClick = {
+                model.clearMessage(); pickerError = ""
+                runCatching { picker.launch(Unit) }.onFailure { pickerError = "无法打开相册，请检查相册应用是否已启用" }
+            }, enabled = !model.busy,
                 modifier = Modifier.fillMaxWidth()) { Text("导入图片并裁剪") }
             Text("外观仅应用于当前课表。导入后可拖动、双指缩放裁剪，夜间会自动压暗背景。",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (model.message.isNotEmpty()) Text(model.message, color = MaterialTheme.colorScheme.error)
+            if (pickerError.isNotEmpty()) Text(pickerError, color = MaterialTheme.colorScheme.error)
         }
     }
     backgrounds.find { backgroundKey(it.skin, it.image) == editing }?.let { option ->
@@ -109,7 +113,7 @@ private fun SkinOption(skin: TimetableSkin, image: String?, selected: Boolean, e
     Column(modifier.clip(shape).border(if (selected) 2.dp else 1.dp,
         if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, shape)
         .combinedClickable(enabled = enabled, onClick = onClick, onLongClick = onLongClick,
-            onLongClickLabel = "设置文字颜色").padding(6.dp)) {
+            onLongClickLabel = "设置文字").padding(6.dp)) {
         Box(Modifier.fillMaxWidth().height(128.dp).clip(RoundedCornerShape(10.dp))) {
             TimetableWallpaper(skin, image, Modifier.fillMaxSize())
             Text("一    二    三    四    五", Modifier.align(Alignment.TopCenter).padding(top = 6.dp),
@@ -164,7 +168,7 @@ internal fun AppearancePage(title: String, enabled: Boolean, onDismiss: () -> Un
 }
 
 @Composable
-private fun WallpaperCropEditor(uri: Uri, aspectRatio: Float, busy: Boolean, message: String,
+internal fun WallpaperCropEditor(uri: Uri, aspectRatio: Float, busy: Boolean, message: String,
     onDismiss: () -> Unit, onApply: (Bitmap, WallpaperCrop) -> Unit) {
     val context = LocalContext.current
     var loadError by remember(uri) { mutableStateOf("") }
