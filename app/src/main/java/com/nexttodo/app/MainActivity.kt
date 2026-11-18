@@ -7,6 +7,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.lifecycle.ViewModelProvider
@@ -177,6 +180,8 @@ private fun NextToDo(
     var tab by rememberSaveable { mutableStateOf(Tab.DAILY) }
     var detailId by rememberSaveable { mutableStateOf<String?>(null) }
     var showingPomodoro by rememberSaveable { mutableStateOf(false) }
+    var timetableTabsVisible by rememberSaveable { mutableStateOf(true) }
+    LaunchedEffect(tab) { timetableTabsVisible = true }
     var selectedDate by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
     val selectedDay = LocalDate.parse(selectedDate)
     val detail = model.events.firstOrNull { it.id == detailId }
@@ -245,10 +250,13 @@ private fun NextToDo(
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             if (!keyboardVisible) {
-                BottomTabs(tab, dark) {
-                    detailId = null
-                    showingPomodoro = false
-                    tab = it
+                AnimatedVisibility(visible = !showingTimetable || timetableTabsVisible,
+                    enter = expandVertically(), exit = shrinkVertically()) {
+                    BottomTabs(tab, dark) {
+                        detailId = null
+                        showingPomodoro = false
+                        tab = it
+                    }
                 }
             }
         },
@@ -269,7 +277,10 @@ private fun NextToDo(
             return@Scaffold
         }
         if (showingTimetable) {
-            Box(Modifier.fillMaxSize().padding(padding)) { TimetableScreen(timetable) }
+            Box(Modifier.fillMaxSize().padding(padding)) {
+                TimetableScreen(timetable, onHideNavigation = { timetableTabsVisible = false },
+                    onToggleNavigation = { timetableTabsVisible = !timetableTabsVisible })
+            }
             return@Scaffold
         }
         if (tab == Tab.DAILY && detail != null) {

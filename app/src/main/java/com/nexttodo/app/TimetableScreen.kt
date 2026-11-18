@@ -7,6 +7,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,6 +46,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -64,6 +67,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
@@ -114,7 +118,7 @@ private fun CourseSlot.inGrid() = weekday != null && firstPeriod != null &&
 
 @Composable
 internal fun TimetableScreen(model: TimetableViewModel, previewTable: Timetable? = null, isPreview: Boolean = false,
-    initialWeek: Int? = null) {
+    initialWeek: Int? = null, onHideNavigation: () -> Unit = {}, onToggleNavigation: () -> Unit = {}) {
     val today = LocalDate.now()
     val table = previewTable ?: model.selected
     val currentWeek = table.currentWeek(today)
@@ -146,6 +150,13 @@ internal fun TimetableScreen(model: TimetableViewModel, previewTable: Timetable?
         rememberPagerState(initialPage = (initialWeek ?: currentWeek).coerceIn(1, count) - 1) { count }
     }
     val gridScroll = key(table.id) { rememberScrollState() }
+    val hideNavigation by rememberUpdatedState(onHideNavigation)
+    val toggleNavigation by rememberUpdatedState(onToggleNavigation)
+    LaunchedEffect(gridScroll, pager, isPreview) {
+        if (!isPreview) snapshotFlow { gridScroll.isScrollInProgress || pager.isScrollInProgress }.collect { scrolling ->
+            if (scrolling) hideNavigation()
+        }
+    }
     val week = pager.currentPage + 1
     val monday = table.dateOfWeek(week)
     val periodCount = maxOf(12, table.courses.filter { it.inGrid() }.maxOfOrNull { it.lastPeriod!! } ?: 0)
@@ -220,7 +231,9 @@ internal fun TimetableScreen(model: TimetableViewModel, previewTable: Timetable?
                 }
                 TimetableAction(TableGlyph.MORE, "课表与周数", enabled, toolbarInk) { controls = true }
             }
-            Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
+            Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().pointerInput(isPreview) {
+                if (!isPreview) detectTapGestures(onTap = { toggleNavigation() })
+            }) {
                 Column(Modifier.fillMaxSize()) {
                     WeekDates(monday, today, Color(textColors.header))
                     Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(gridScroll)) {
