@@ -148,9 +148,8 @@ internal fun TimetableScreen(model: TimetableViewModel) {
     val periodCount = maxOf(12, table.courses.filter { it.inGrid() }.maxOfOrNull { it.lastPeriod!! } ?: 0)
     val enabled = model.ready && !model.busy && model.preview == null
     Box(
-        Modifier.fillMaxSize().background(timetableTop).onSizeChanged { viewport = it },
+        Modifier.fillMaxSize().background(timetableTop),
     ) {
-        TimetableWallpaper(table.skin, table.backgroundImage, Modifier.matchParentSize())
         Column(Modifier.fillMaxSize()) {
             Row(
                 Modifier.fillMaxWidth().heightIn(min = 46.dp).padding(start = 12.dp, end = 2.dp),
@@ -206,13 +205,22 @@ internal fun TimetableScreen(model: TimetableViewModel) {
                 }
                 TimetableAction(TableGlyph.MORE, "课表与周数", enabled) { controls = true }
             }
-            WeekDates(monday, today)
-            Column(Modifier.fillMaxSize().verticalScroll(gridScroll)) {
-                HorizontalPager(state = pager, modifier = Modifier.fillMaxWidth(), beyondViewportPageCount = 0) { page ->
-                    WeekGrid(table.courses, page + 1, periodCount, enabled) {
-                        model.clearMessage()
-                        if (it.size == 1) editIndex = table.courses.indexOf(it.single())
-                        else overlappingIndices = it.map(table.courses::indexOf).toIntArray()
+            Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().onSizeChanged { viewport = it }) {
+                TimetableWallpaper(table.skin, table.backgroundImage, Modifier.matchParentSize())
+                Column(Modifier.fillMaxSize()) {
+                    WeekDates(monday, today)
+                    Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(gridScroll)) {
+                        HorizontalPager(
+                            state = pager,
+                            modifier = Modifier.fillMaxWidth(),
+                            beyondViewportPageCount = 0,
+                        ) { page ->
+                            WeekGrid(table.courses, page + 1, periodCount, enabled) {
+                                model.clearMessage()
+                                if (it.size == 1) editIndex = table.courses.indexOf(it.single())
+                                else overlappingIndices = it.map(table.courses::indexOf).toIntArray()
+                            }
+                        }
                     }
                 }
             }
