@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
@@ -41,6 +43,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.key
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
@@ -60,11 +63,13 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.LayoutDirection
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoUnit
 
 private val monthFormat = DateTimeFormatter.ofPattern("yyyy年M月")
 internal val dayFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("M月d日")
@@ -77,15 +82,7 @@ private val todayHeaderForeground: Color
         MaterialTheme.colorScheme.onSurface
     } else MaterialTheme.colorScheme.onPrimary
 private val weekdays = listOf("一", "二", "三", "四", "五", "六", "日")
-private val calendarStart = LocalDate.of(1900, 1, 1)
-private val calendarSize = ChronoUnit.DAYS.between(calendarStart, LocalDate.of(2201, 1, 1)).toInt()
 private const val VISIBLE_DAYS = 7
-private enum class TodayPeriod(val label: String) { DAY("每日待办"), WEEK("每周待办"), MONTH("每月待办") }
-
-private fun pageFor(day: LocalDate) = ChronoUnit.DAYS.between(calendarStart, day)
-    .coerceIn(0L, calendarSize.toLong() - 1).toInt()
-
-private fun dayFor(page: Int) = calendarStart.plusDays(page.toLong())
 
 @Composable
 internal fun TodayScreen(
@@ -98,12 +95,11 @@ internal fun TodayScreen(
 ) {
     val today = LocalDate.now()
     var period by rememberSaveable { mutableStateOf(TodayPeriod.DAY) }
-    val start = when (period) { TodayPeriod.DAY -> selectedDay; TodayPeriod.WEEK -> selectedDay.monday(); TodayPeriod.MONTH -> selectedDay.withDayOfMonth(1) }
-    val end = when (period) { TodayPeriod.DAY -> selectedDay; TodayPeriod.WEEK -> start.plusDays(6); TodayPeriod.MONTH -> selectedDay.withDayOfMonth(selectedDay.lengthOfMonth()) }
-    val displayed = periodEvents(model.events, start, end)
-    val counts = (-14L..14L).associate { offset -> selectedDay.plusDays(offset).let { day -> day to model.events.count { it.onDate(day) != null } } }
+    val start = period.start(selectedDay)
+    val end = period.end(selectedDay)
+    val displayed = remember(model.events, start, end) { periodEvents(model.events, start, end) }
     Column(Modifier.fillMaxSize()) {
-        DateSelector(selectedDay, today, counts, onDayChange, period) { period = it }
+        key(period) { DateSelector(selectedDay, today, model.events, onDayChange, period) { period = it } }
         if (period != TodayPeriod.DAY) Text("${period.label} · $start — $end", Modifier.padding(horizontal = 20.dp, vertical = 8.dp), style = MaterialTheme.typography.bodySmall)
         val enterFocus by rememberUpdatedState(onEnterFocus)
         Box(Modifier.weight(1f).fillMaxWidth()
@@ -159,29 +155,33 @@ internal fun TodayScreen(
 private fun DateSelector(
     selectedDay: LocalDate,
     today: LocalDate,
-    eventCounts: Map<LocalDate, Int>,
+    events: List<Event>,
     onDayChange: (LocalDate) -> Unit,
     period: TodayPeriod,
     onPeriodChange: (TodayPeriod) -> Unit,
 ) {
     val blue = todayHeaderBackground
     val foreground = todayHeaderForeground
-    val state = rememberPagerState(initialPage = pageFor(selectedDay)) { calendarSize }
+    val state = rememberPagerState(initialPage = period.pageFor(selectedDay)) { period.pageCount }
+    val eventCounts = remember(events, period, state.currentPage) {
+        (-5..5).map { state.currentPage + it }.filter { it in 0 until period.pageCount }.associateWith { page ->
+            val date = period.dateFor(page)
+            periodEvents(events, date, period.end(date)).size
+        }
+    }
     val context = LocalContext.current
     val dialogTheme = if (timetableDark) R.style.Theme_NextToDo_Dialog_Dark else R.style.Theme_NextToDo_Dialog_Light
     var menu by remember { mutableStateOf(false) }
     LaunchedEffect(selectedDay) {
-        if (state.settledPage != pageFor(selectedDay)) state.requestScrollToPage(pageFor(selectedDay))
+        if (state.currentPage != period.pageFor(selectedDay)) state.requestScrollToPage(period.pageFor(selectedDay))
     }
-    val daysFromToday = ChronoUnit.DAYS.between(today, dayFor(state.currentPage))
-    val relativeDayLabel = when {
-        daysFromToday > 0 -> "距离 $daysFromToday 天"
-        daysFromToday < 0 -> "已过 ${-daysFromToday} 天"
-        else -> "今天"
-    }
+    val relativeDayLabel = period.relativeLabel(today, period.dateFor(state.currentPage))
     val changeDay by rememberUpdatedState(onDayChange)
+    val latestDay by rememberUpdatedState(selectedDay)
     LaunchedEffect(state) {
-        snapshotFlow { state.settledPage }.collect { changeDay(dayFor(it)) }
+        snapshotFlow { state.settledPage }.collect {
+            if (it != period.pageFor(latestDay)) changeDay(period.dateFor(it))
+        }
     }
     Surface(color = blue, contentColor = foreground) {
         Column(
@@ -207,20 +207,25 @@ private fun DateSelector(
                 }
                 }
                 Text(
-                    dayFor(state.currentPage).format(monthFormat),
+                    period.dateFor(state.currentPage).format(monthFormat),
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f).clickable {
-                        DatePickerDialog(context, dialogTheme, { _, y, m, d -> state.requestScrollToPage(pageFor(LocalDate.of(y, m + 1, d))) },
+                        DatePickerDialog(context, dialogTheme, { _, y, m, d ->
+                            val date = LocalDate.of(y, m + 1, d)
+                            changeDay(date)
+                            state.requestScrollToPage(period.pageFor(date))
+                        },
                             selectedDay.year, selectedDay.monthValue - 1, selectedDay.dayOfMonth).show()
                     },
                 )
-                TextButton(onClick = { state.requestScrollToPage(pageFor(today)) },
+                TextButton(onClick = { changeDay(today); state.requestScrollToPage(period.pageFor(today)) },
                     modifier = Modifier.semantics { contentDescription = "回到今天" }) {
                     Text(relativeDayLabel, color = foreground)
                 }
             }
-            BoxWithConstraints(Modifier.fillMaxWidth().height(116.dp)) {
+            val extraHeight = 24.dp * (LocalDensity.current.fontScale - 1f).coerceAtLeast(0f)
+            BoxWithConstraints(Modifier.fillMaxWidth().height(128.dp + extraHeight)) {
                 val cellWidth = maxWidth / VISIBLE_DAYS
                 EventCurve(state, eventCounts, foreground)
                 HorizontalPager(
@@ -234,30 +239,48 @@ private fun DateSelector(
                     ),
                     key = { it },
                 ) { page ->
-                    val date = dayFor(page)
-                    val count = eventCounts[date] ?: 0
+                    val date = period.dateFor(page)
+                    val count = eventCounts[page] ?: 0
                     val active = page == state.currentPage
                     val weekday = weekdays[date.dayOfWeek.value - 1]
                     Column(
                         Modifier.fillMaxSize().padding(top = 58.dp).clickable { state.requestScrollToPage(page) }
                             .semantics {
                                 selected = active
-                                contentDescription = "${date.format(dayFormat)}，星期$weekday，$count 个事件"
+                                contentDescription = when (period) {
+                                    TodayPeriod.DAY -> "${date.format(dayFormat)}，星期$weekday，$count 个事件"
+                                    TodayPeriod.WEEK -> "${date}至${period.end(date)}，$count 个事件"
+                                    TodayPeriod.MONTH -> "${date.year}年${date.monthValue}月，$count 个事件"
+                                }
                             },
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically),
                     ) {
-                        Text("周$weekday", style = MaterialTheme.typography.labelSmall)
+                        Text(when (period) {
+                            TodayPeriod.DAY -> "周$weekday"
+                            TodayPeriod.WEEK -> "${date.monthValue}月"
+                            TodayPeriod.MONTH -> "${date.year}年"
+                        }, style = MaterialTheme.typography.labelSmall,
+                            fontSize = (if (period == TodayPeriod.MONTH) 10 else 11).sp,
+                            maxLines = 1, softWrap = false)
                         Surface(
                             color = if (active) foreground else Color.Transparent,
                             contentColor = if (active) blue else foreground,
                             shape = CircleShape,
                         ) {
-                            Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
+                            Box(Modifier.width(if (period == TodayPeriod.DAY) 34.dp else cellWidth - 6.dp)
+                                .heightIn(min = 36.dp).padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
                                 Text(
-                                    date.dayOfMonth.toString(),
+                                    when (period) {
+                                        TodayPeriod.DAY -> date.dayOfMonth.toString()
+                                        TodayPeriod.WEEK -> "${date.dayOfMonth}–${period.end(date).dayOfMonth}"
+                                        TodayPeriod.MONTH -> "${date.monthValue}月"
+                                    },
                                     style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = if (date == today || active) FontWeight.Bold else FontWeight.Medium,
+                                    fontSize = when (period) { TodayPeriod.WEEK -> 12.sp; TodayPeriod.MONTH -> 14.sp; TodayPeriod.DAY -> 16.sp },
+                                    maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis,
+                                    textAlign = TextAlign.Center,
+                                    fontWeight = if (period.pageFor(date) == period.pageFor(today) || active) FontWeight.Bold else FontWeight.Medium,
                                 )
                             }
                         }
@@ -269,14 +292,14 @@ private fun DateSelector(
 }
 
 @Composable
-private fun EventCurve(state: PagerState, eventCounts: Map<LocalDate, Int>, color: Color) {
+private fun EventCurve(state: PagerState, eventCounts: Map<Int, Int>, color: Color) {
     Canvas(Modifier.fillMaxWidth().height(55.dp)) {
         val centerPage = state.currentPage
         val pageOffset = state.currentPageOffsetFraction
         val cellWidth = size.width / VISIBLE_DAYS
         val direction = if (layoutDirection == LayoutDirection.Ltr) 1 else -1
         val points = (-4..4).map { relative ->
-            val count = eventCounts[dayFor(centerPage + relative)] ?: 0
+            val count = eventCounts[centerPage + relative] ?: 0
             val rise = count / (count + 3f)
             Offset(
                 size.width / 2f + (relative - pageOffset) * cellWidth * direction,
