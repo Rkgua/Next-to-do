@@ -4,6 +4,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.DragInteraction
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
 import android.app.DatePickerDialog
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -40,6 +44,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -71,6 +76,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.LayoutDirection
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 
 private val monthFormat = DateTimeFormatter.ofPattern("yyyy年M月")
 internal val dayFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("M月d日")
@@ -172,6 +179,25 @@ private fun DateSelector(
     val blue = todayHeaderBackground
     val foreground = todayHeaderForeground
     val state = rememberPagerState(initialPage = period.pageFor(selectedDay)) { period.pageCount }
+    val scope = rememberCoroutineScope()
+    var navigation by remember { mutableStateOf<Job?>(null) }
+    var navigationToken by remember { mutableStateOf<Any?>(null) }
+    var selectionAnchor by remember { mutableStateOf(selectedDay) }
+    val changeDay by rememberUpdatedState(onDayChange)
+    fun selectDate(date: LocalDate) {
+        navigation?.cancel()
+        val token = Any()
+        navigationToken = token
+        navigation = scope.launch {
+            try {
+                state.animateScrollToPage(period.pageFor(date), animationSpec = tween(500, easing = FastOutSlowInEasing))
+                selectionAnchor = date
+                changeDay(date)
+            } finally {
+                if (navigationToken === token) navigationToken = null
+            }
+        }
+    }
     val eventCounts = remember(events, period, state.currentPage) {
         (-5..5).map { state.currentPage + it }.filter { it in 0 until period.pageCount }.associateWith { page ->
             val date = period.dateFor(page)
@@ -182,14 +208,21 @@ private fun DateSelector(
     val dialogTheme = if (timetableDark) R.style.Theme_NextToDo_Dialog_Dark else R.style.Theme_NextToDo_Dialog_Light
     var menu by remember { mutableStateOf(false) }
     LaunchedEffect(selectedDay) {
-        if (state.currentPage != period.pageFor(selectedDay)) state.requestScrollToPage(period.pageFor(selectedDay))
+        selectionAnchor = selectedDay
+        if (navigationToken == null && !state.isScrollInProgress && state.currentPage != period.pageFor(selectedDay)) state.requestScrollToPage(period.pageFor(selectedDay))
     }
     val relativeDayLabel = period.relativeLabel(today, period.dateFor(state.currentPage))
-    val changeDay by rememberUpdatedState(onDayChange)
-    val latestDay by rememberUpdatedState(selectedDay)
     LaunchedEffect(state) {
-        snapshotFlow { state.settledPage }.collect {
-            if (it != period.pageFor(latestDay)) changeDay(period.dateFor(it))
+        snapshotFlow { if (navigationToken == null && !state.isScrollInProgress) state.settledPage else null }.collect {
+            if (it != null && it != period.pageFor(selectionAnchor)) {
+                selectionAnchor = period.dateFor(it)
+                changeDay(selectionAnchor)
+            }
+        }
+    }
+    LaunchedEffect(state) {
+        state.interactionSource.interactions.collect { interaction ->
+            if (interaction is DragInteraction.Start) { navigation?.cancel(); navigation = null; navigationToken = null }
         }
     }
     Surface(color = blue, contentColor = foreground) {
@@ -222,13 +255,12 @@ private fun DateSelector(
                     modifier = Modifier.weight(1f).clickable {
                         DatePickerDialog(context, dialogTheme, { _, y, m, d ->
                             val date = LocalDate.of(y, m + 1, d)
-                            changeDay(date)
-                            state.requestScrollToPage(period.pageFor(date))
+                            selectDate(date)
                         },
                             selectedDay.year, selectedDay.monthValue - 1, selectedDay.dayOfMonth).show()
                     },
                 )
-                TextButton(onClick = { changeDay(today); state.requestScrollToPage(period.pageFor(today)) },
+                TextButton(onClick = { selectDate(today) },
                     modifier = Modifier.semantics { contentDescription = "回到今天" }) {
                     Text(relativeDayLabel, color = foreground)
                 }
@@ -253,7 +285,9 @@ private fun DateSelector(
                     val active = page == state.currentPage
                     val weekday = weekdays[date.dayOfWeek.value - 1]
                     Column(
-                        Modifier.fillMaxSize().padding(top = 58.dp).clickable { state.requestScrollToPage(page) }
+                        Modifier.fillMaxSize().padding(top = 58.dp).clickable(
+                            interactionSource = remember { MutableInteractionSource() }, indication = null,
+                            onClick = { selectDate(date) })
                             .semantics {
                                 selected = active
                                 contentDescription = when (period) {
