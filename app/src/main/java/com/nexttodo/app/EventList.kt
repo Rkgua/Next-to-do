@@ -71,8 +71,9 @@ internal fun EventList(
     allowReorder: Boolean = true,
     wallpaperInk: Color? = null,
     emptyLabel: String = "这天暂无待办",
+    ongoingEvents: List<Event> = emptyList(),
 ) {
-    if (events.isEmpty()) {
+    if (events.isEmpty() && ongoingEvents.isEmpty()) {
         Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -90,7 +91,9 @@ internal fun EventList(
             confirmButton = { TextButton(enabled = enabled, onClick = { deleting = null; onDelete(event) }) { Text("删除") } },
             dismissButton = { TextButton(onClick = { deleting = null }) { Text("取消") } })
     }
-    val (completed, pending) = events.sortedByDescending { it.pinned }.partition { it.completed }
+    val ongoingKeys = ongoingEvents.map(::eventListKey).toSet()
+    val (completed, pending) = events.filterNot { eventListKey(it) in ongoingKeys }
+        .sortedByDescending { it.pinned }.partition { it.completed }
     val listState = rememberLazyListState()
     val latestPending by rememberUpdatedState(pending.associateBy(::eventListKey))
     val latestEnabled by rememberUpdatedState(enabled && allowReorder)
@@ -163,6 +166,11 @@ internal fun EventList(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(bottom = 88.dp),
         ) {
+            if (ongoingEvents.isNotEmpty()) item(key = "long-events-heading") { SectionLabel("长期事件", wallpaperInk) }
+            items(ongoingEvents.sortedByDescending { it.pinned }, key = { "long:${eventListKey(it)}" }) { event ->
+                SwipeEventRow(event, enabled, onOpen, onToggle, onPin = onPin,
+                    onDelete = { deleting = it }, wallpaperInk = wallpaperInk)
+            }
             if (pending.isNotEmpty()) item { SectionLabel("待完成 · ${pending.size}", wallpaperInk) }
             items(pending, key = ::eventListKey) { event ->
                 val index = pending.indexOf(event)

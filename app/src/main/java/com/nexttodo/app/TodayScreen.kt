@@ -93,7 +93,9 @@ internal fun TodayScreen(
     onAdd: () -> Unit,
     onEnterFocus: () -> Unit,
 ) {
-    val today = LocalDate.now()
+    val now = rememberEventNow(model.events)
+    val today = now.toLocalDate()
+    val ongoing = remember(model.events, now) { activeLongEvents(model.events, now) }
     var period by rememberSaveable { mutableStateOf(TodayPeriod.DAY) }
     val start = period.start(selectedDay)
     val end = period.end(selectedDay)
@@ -133,6 +135,7 @@ internal fun TodayScreen(
                         onMove = model::movePending,
                         onPin = model::pin, onDelete = model::delete,
                         allowReorder = period == TodayPeriod.DAY,
+                        ongoingEvents = ongoing,
                         emptyLabel = when (period) {
                             TodayPeriod.DAY -> "这天暂无待办"
                             TodayPeriod.WEEK -> "本周暂无待办"

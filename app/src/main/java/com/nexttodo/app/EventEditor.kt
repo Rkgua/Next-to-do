@@ -82,15 +82,11 @@ internal fun EventEditor(
         EditorText("描述", event.description, enabled, singleLine = false) {
             onChange(event.copy(description = it))
         }
-        TimeField("事件时间", event.time, enabled, initialDate = event.day) {
-            onChange(event.copy(time = it, day = it.takeIf(String::isNotBlank)?.let { value -> LocalDateTime.parse(value).toLocalDate() } ?: event.day,
-                reminderEnabled = it.isNotBlank() && event.reminderEnabled))
-        }
         EventScheduleEditor(event, enabled, onChange)
         event.timeInMillis()?.let { time ->
             val future = time > System.currentTimeMillis()
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("到点提醒", Modifier.weight(1f))
+                Text(if (event.isDuration) "开始时提醒" else "到点提醒", Modifier.weight(1f))
                 Switch(
                     checked = event.reminderEnabled,
                     onCheckedChange = { onChange(event.copy(reminderEnabled = it)) },
@@ -99,7 +95,7 @@ internal fun EventEditor(
             }
             val notifications = context.getSystemService(NotificationManager::class.java).areNotificationsEnabled()
             val hint = when {
-                !future && event.repetition == EventRepeat.NONE -> "事件时间已过"
+                !future && event.repetition == EventRepeat.NONE -> if (event.isDuration) "开始时间已过，无法设置开始提醒" else "事件时间已过"
                 event.reminderEnabled && !notifications -> "请在「My → 权限」开启通知"
                 else -> null
             }
@@ -265,6 +261,8 @@ internal fun TimeField(
     value: String,
     enabled: Boolean,
     initialDate: LocalDate? = null,
+    allowClear: Boolean = true,
+    format: DateTimeFormatter = dateFormat,
     onChange: (String) -> Unit,
 ) {
     val context = LocalContext.current
@@ -273,23 +271,25 @@ internal fun TimeField(
     } else {
         R.style.Theme_NextToDo_Dialog_Light
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(
             onClick = { pickDateTime(context, dialogTheme, value, initialDate, onChange) },
             enabled = enabled,
+            modifier = Modifier.weight(1f),
         ) {
             Text(
                 when {
-                    value.isNotBlank() -> "$label · ${eventTimeLabel(value)}"
+                    value.isNotBlank() -> "$label · ${LocalDateTime.parse(value).format(format)}"
                     initialDate != null -> "选择$label · ${initialDate.format(dayFormat)}"
                     else -> "选择$label"
                 }
             )
         }
-        if (value.isNotBlank()) {
+        if (value.isNotBlank() && allowClear) {
             TextButton(onClick = { onChange("") }, enabled = enabled) { Text("清除") }
         }
     }
+
 }
 
 private fun pickDateTime(
