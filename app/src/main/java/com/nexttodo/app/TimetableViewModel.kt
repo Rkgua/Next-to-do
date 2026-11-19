@@ -89,6 +89,13 @@ internal fun CourseSlot.hasFutureOccurrence(week: Int): Boolean =
 
 internal class TimetableViewModel(application: Application) : AndroidViewModel(application) {
     private val preferences = application.getSharedPreferences("timetable", Context.MODE_PRIVATE)
+    var hideNonCurrentCourses by mutableStateOf(preferences.getBoolean("hide_non_current_courses", false))
+        private set
+
+    fun updateHideNonCurrentCourses(value: Boolean) {
+        preferences.edit().putBoolean("hide_non_current_courses", value).apply()
+        hideNonCurrentCourses = value
+    }
     private val initial = Timetable("default", "未命名", LocalDate.now().monday(), emptyList())
     var tables by mutableStateOf(listOf(initial))
         private set

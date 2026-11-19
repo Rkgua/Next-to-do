@@ -252,7 +252,11 @@ internal fun TimetableScreen(model: TimetableViewModel, previewTable: Timetable?
                             modifier = Modifier.fillMaxWidth(),
                             beyondViewportPageCount = 0,
                         ) { page ->
-                            WeekGrid(table.courses, page + 1, periodCount, enabled, Color(textColors.time), gridStyle, textLayout) {
+                            val visibleCourses = remember(table.courses, page, model.hideNonCurrentCourses) {
+                                if (model.hideNonCurrentCourses) table.courses.filter { it.takesPlaceIn(page + 1) }
+                                else table.courses
+                            }
+                            WeekGrid(visibleCourses, page + 1, periodCount, enabled, Color(textColors.time), gridStyle, textLayout) {
                                 model.clearMessage()
                                 if (it.size == 1) editIndex = table.courses.indexOf(it.single())
                                 else overlappingIndices = it.map(table.courses::indexOf).toIntArray()

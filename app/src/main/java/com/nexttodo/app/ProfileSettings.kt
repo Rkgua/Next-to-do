@@ -89,6 +89,16 @@ internal fun ProfileSettings(
             HorizontalDivider()
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
+                    Text("隐藏非本周课程")
+                    Text("只显示所查看周的课程", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(checked = timetable.hideNonCurrentCourses,
+                    modifier = Modifier.semantics { contentDescription = "隐藏非本周课程" },
+                    onCheckedChange = timetable::updateHideNonCurrentCourses)
+            }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
                     Text("课表与 Today 背景同步")
                     Text(if (todayAppearance.synced) "Today 跟随当前课表背景" else "Today 单独设置背景",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
