@@ -42,6 +42,15 @@ data class Event(
     val fields: List<EventField> = emptyList(),
     val day: LocalDate? = null,
     val reminderEnabled: Boolean = false,
+    val endTime: String = "",
+    val endDay: LocalDate? = null,
+    val repetition: EventRepeat = EventRepeat.NONE,
+    val repeatDays: Set<Int> = emptySet(),
+    val repeatInterval: Int = 2,
+    val repeatWorkDays: Int = 1,
+    val completedDates: Set<LocalDate> = emptySet(),
+    val pinned: Boolean = false,
+    val occurrenceDate: LocalDate? = null,
 ) {
     val calendarDay: LocalDate?
         get() = time.takeIf(String::isNotBlank)?.let { LocalDateTime.parse(it).toLocalDate() } ?: day

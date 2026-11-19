@@ -23,6 +23,8 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -62,6 +64,8 @@ internal fun EventList(
     onOpen: (Event) -> Unit,
     onToggle: (Event, Boolean) -> Unit,
     onMove: (String, String) -> Unit,
+    onPin: (Event) -> Unit = {},
+    onDelete: (Event) -> Unit = {},
     allowReorder: Boolean = true,
     wallpaperInk: Color? = null,
 ) {
@@ -73,9 +77,16 @@ internal fun EventList(
         )
         return
     }
-    val (completed, pending) = events.partition { it.completed }
+    var deleting by remember { mutableStateOf<Event?>(null) }
+    deleting?.let { event ->
+        AlertDialog(onDismissRequest = { deleting = null }, title = { Text("删除事件？") },
+            text = { Text(event.title + if (event.repetition != EventRepeat.NONE) "\n将删除整个重复事件及后续安排。" else "") },
+            confirmButton = { TextButton(enabled = enabled, onClick = { deleting = null; onDelete(event) }) { Text("删除") } },
+            dismissButton = { TextButton(onClick = { deleting = null }) { Text("取消") } })
+    }
+    val (completed, pending) = events.sortedByDescending { it.pinned }.partition { it.completed }
     val listState = rememberLazyListState()
-    val latestPending by rememberUpdatedState(pending.associateBy(Event::id))
+    val latestPending by rememberUpdatedState(pending.associateBy(::eventListKey))
     val latestEnabled by rememberUpdatedState(enabled && allowReorder)
     val latestOnMove by rememberUpdatedState(onMove)
     val autoScrollZone = with(LocalDensity.current) { 54.dp.toPx() }
@@ -132,9 +143,10 @@ internal fun EventList(
                         val target = listState.layoutInfo.visibleItemsInfo
                             .filter { (it.key as? String)?.let(latestPending::containsKey) == true }
                             .minByOrNull { abs(current.center - (it.offset + it.size / 2f)) }
-                        val targetId = target?.key as? String ?: latestPending.values.lastOrNull()?.id
-                        if (targetId != null && targetId != current.event.id) {
-                            latestOnMove(current.event.id, targetId)
+                        val targetId = target?.key as? String ?: latestPending.values.lastOrNull()?.let(::eventListKey)
+                        val targetEvent = targetId?.let(latestPending::get)
+                        if (targetEvent != null && targetEvent.id != current.event.id) {
+                            latestOnMove(current.event.id, targetEvent.id)
                         }
                     }
                 }
@@ -146,7 +158,7 @@ internal fun EventList(
             contentPadding = PaddingValues(bottom = 88.dp),
         ) {
             if (pending.isNotEmpty()) item { SectionLabel("待完成 · ${pending.size}", wallpaperInk) }
-            items(pending, key = { it.id }) { event ->
+            items(pending, key = ::eventListKey) { event ->
                 val index = pending.indexOf(event)
                 val reorderActions = if (enabled && allowReorder) buildList {
                     pending.getOrNull(index - 1)?.let { previous ->
@@ -156,8 +168,9 @@ internal fun EventList(
                         add(CustomAccessibilityAction("下移") { onMove(event.id, next.id); true })
                     }
                 } else emptyList()
-                EventRow(
+                SwipeEventRow(
                     event, enabled, onOpen, onToggle,
+                    onPin = onPin, onDelete = { deleting = it },
                     modifier = Modifier.animateItem().alpha(if (drag?.event?.id == event.id) 0.22f else 1f),
                     showHandle = allowReorder && pending.size > 1,
                     reorderActions = reorderActions,
@@ -165,7 +178,8 @@ internal fun EventList(
                 )
             }
             if (completed.isNotEmpty()) item { SectionLabel("已完成 · ${completed.size}", wallpaperInk) }
-            items(completed, key = { it.id }) { EventRow(it, enabled, onOpen, onToggle, wallpaperInk = wallpaperInk) }
+            items(completed, key = ::eventListKey) { SwipeEventRow(it, enabled, onOpen, onToggle,
+                onPin = onPin, onDelete = { deleting = it }, wallpaperInk = wallpaperInk) }
         }
         drag?.let { current ->
             EventRow(
@@ -212,7 +226,7 @@ private fun SectionLabel(label: String, wallpaperInk: Color? = null) {
 }
 
 @Composable
-private fun EventRow(
+internal fun EventRow(
     event: Event,
     enabled: Boolean,
     onOpen: (Event) -> Unit,
@@ -247,12 +261,12 @@ private fun EventRow(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(
-                    event.title,
+                    (if (event.pinned) "置顶 · " else "") + event.title,
                     style = MaterialTheme.typography.titleMedium,
                     textDecoration = if (event.completed) TextDecoration.LineThrough else TextDecoration.None,
                 )
                 Text(
-                    listOf(event.type.label, event.time.takeIf { it.isNotBlank() }?.let(::eventTimeLabel))
+                    listOf(event.type.label, event.scheduleLabel().takeIf { it.isNotBlank() })
                         .filterNotNull().joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall,
                     color = wallpaperInk?.copy(alpha = .8f) ?: MaterialTheme.colorScheme.onSurfaceVariant,
@@ -275,3 +289,5 @@ private fun EventRow(
         }
     }
 }
+
+private fun eventListKey(event: Event) = "${event.id}:${event.occurrenceDate}"

@@ -83,8 +83,10 @@ internal fun EventEditor(
             onChange(event.copy(description = it))
         }
         TimeField("事件时间", event.time, enabled, initialDate = event.day) {
-            onChange(event.copy(time = it, reminderEnabled = it.isNotBlank() && event.reminderEnabled))
+            onChange(event.copy(time = it, day = it.takeIf(String::isNotBlank)?.let { value -> LocalDateTime.parse(value).toLocalDate() } ?: event.day,
+                reminderEnabled = it.isNotBlank() && event.reminderEnabled))
         }
+        EventScheduleEditor(event, enabled, onChange)
         event.timeInMillis()?.let { time ->
             val future = time > System.currentTimeMillis()
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -92,12 +94,12 @@ internal fun EventEditor(
                 Switch(
                     checked = event.reminderEnabled,
                     onCheckedChange = { onChange(event.copy(reminderEnabled = it)) },
-                    enabled = enabled && (future || event.reminderEnabled),
+                    enabled = enabled && (future || event.reminderEnabled || event.repetition != EventRepeat.NONE),
                 )
             }
             val notifications = context.getSystemService(NotificationManager::class.java).areNotificationsEnabled()
             val hint = when {
-                !future -> "事件时间已过"
+                !future && event.repetition == EventRepeat.NONE -> "事件时间已过"
                 event.reminderEnabled && !notifications -> "请在「My → 权限」开启通知"
                 else -> null
             }
@@ -257,7 +259,7 @@ internal fun eventTimeLabel(value: String): String =
     LocalDateTime.parse(value).format(dateFormat)
 
 @Composable
-private fun TimeField(
+internal fun TimeField(
     label: String,
     value: String,
     enabled: Boolean,

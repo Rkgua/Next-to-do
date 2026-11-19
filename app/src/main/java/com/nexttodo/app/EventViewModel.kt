@@ -51,7 +51,7 @@ internal class EventViewModel(application: Application) : AndroidViewModel(appli
         if (!busy) draft = event
     }
 
-    fun edit(event: Event) = updateDraft(event)
+    fun edit(event: Event) = updateDraft(events.find { it.id == event.id } ?: event)
 
     fun clearDraft(day: LocalDate = LocalDate.now()) = updateDraft(newEvent(day))
 
@@ -93,9 +93,11 @@ internal class EventViewModel(application: Application) : AndroidViewModel(appli
             return
         }
         val previous = events.firstOrNull { it.id == event.id }
+        event.validateSchedule()?.let { message = it; return }
         write("无法保存事件，请检查附件后重试") {
             val saved = withContext(Dispatchers.IO) {
-                store.save(event.copy(completed = previous?.completed ?: false), previous).also {
+                store.save(event.copy(completed = if (previous?.repetition == event.repetition) previous.completed else false,
+                    completedDates = if (previous?.repetition == event.repetition) previous.completedDates else emptySet()), previous).also {
                     runCatching { reminders.update(previous, it) }.onFailure(::logReminderFailure)
                 }
             }
@@ -107,18 +109,35 @@ internal class EventViewModel(application: Application) : AndroidViewModel(appli
     }
 
     fun complete(event: Event, completed: Boolean) = write("无法更新事件状态") {
-        val updated = event.copy(completed = completed)
+        val base = events.firstOrNull { it.id == event.id } ?: return@write
+        val occurrence = event.occurrenceDate ?: event.occurrenceStart(LocalDate.now()) ?: base.startDay()
+        val updated = if (base.repetition == EventRepeat.NONE) base.copy(completed = completed)
+            else base.copy(completedDates = if (completed) base.completedDates + occurrence else base.completedDates - occurrence)
         withContext(Dispatchers.IO) {
-            store.setCompleted(event.id, completed)
+            store.save(updated, base)
             runCatching { reminders.update(event, updated) }.onFailure(::logReminderFailure)
         }
         events = events.map { if (it.id == event.id) updated else it }
+    }
+
+    fun pin(event: Event) = write("无法更新置顶状态") {
+        val base = events.firstOrNull { it.id == event.id } ?: return@write
+        val updated = base.copy(pinned = !base.pinned)
+        withContext(Dispatchers.IO) { store.save(updated, base) }
+        events = events.map { if (it.id == updated.id) updated else it }
+    }
+
+    fun delete(event: Event) = write("无法删除事件") {
+        val base = events.firstOrNull { it.id == event.id } ?: return@write
+        withContext(Dispatchers.IO) { reminders.remove(base); store.delete(base) }
+        events = events.filterNot { it.id == base.id }
     }
 
     fun movePending(id: String, targetId: String) {
         val from = events.indexOfFirst { it.id == id && !it.completed }
         val to = events.indexOfFirst { it.id == targetId && !it.completed }
         if (from < 0 || to < 0 || from == to) return
+        if (events[from].pinned != events[to].pinned) return
         val reordered = events.toMutableList().apply { add(to, removeAt(from)) }
         write("无法保存待办顺序") {
             withContext(Dispatchers.IO) { store.saveOrder(reordered.map(Event::id)) }

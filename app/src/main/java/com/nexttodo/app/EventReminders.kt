@@ -11,6 +11,8 @@ import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import java.util.concurrent.Executors
+import java.time.LocalDateTime
+import java.time.ZoneId
 
 internal fun scheduleWhileIdle(alarms: AlarmManager, type: Int, at: Long, operation: PendingIntent) {
     try {
@@ -31,7 +33,9 @@ internal class EventReminders(private val context: Context) {
 
     fun update(previous: Event?, current: Event) = synchronized(lock) {
         if (previous != null &&
-            (previous.time != current.time || previous.reminderEnabled != current.reminderEnabled)) {
+            (previous.time != current.time || previous.reminderEnabled != current.reminderEnabled ||
+                previous.repetition != current.repetition || previous.repeatDays != current.repeatDays ||
+                previous.repeatInterval != current.repeatInterval || previous.repeatWorkDays != current.repeatWorkDays)) {
             deliveries.edit().remove(current.id).apply()
             notifications.cancel(current.id, NOTIFICATION_ID)
         }
@@ -43,11 +47,23 @@ internal class EventReminders(private val context: Context) {
         events.filter(Event::reminderEnabled).forEach(::synchronize)
     }
 
+    fun remove(event: Event) = synchronized(lock) {
+        val pending = PendingIntent.getBroadcast(context, 0,
+            Intent(context, EventReminderReceiver::class.java).setData(eventUri(event.id)),
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE)
+        pending?.let { alarms.cancel(it); it.cancel() }
+        notifications.cancel(event.id, NOTIFICATION_ID)
+        deliveries.edit().remove(event.id).apply()
+    }
+
     fun deliver(id: String, scheduledTime: String, store: EventStore) = synchronized(lock) {
         val event = store.findEvent(id) ?: return
-        if (!event.reminderEnabled || event.completed || event.time != scheduledTime ||
+        val occurrence = runCatching { LocalDateTime.parse(scheduledTime) }.getOrNull() ?: return
+        val displayed = event.onDate(occurrence.toLocalDate()) ?: return
+        if (displayed.occurrenceDate != occurrence.toLocalDate() || !event.reminderEnabled || displayed.completed || event.time.isBlank() ||
+            LocalDateTime.parse(event.time).toLocalTime() != occurrence.toLocalTime() ||
             deliveries.getString(id, null) == scheduledTime) return
-        val due = event.timeInMillis() ?: return
+        val due = occurrence.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
         if (due > System.currentTimeMillis()) {
             synchronize(event)
             return
@@ -67,7 +83,7 @@ internal class EventReminders(private val context: Context) {
         val notification = NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
             .setContentTitle(event.title)
-            .setContentText("事件时间已到 · ${eventTimeLabel(event.time)}")
+            .setContentText("事件时间已到 · ${eventTimeLabel(scheduledTime)}")
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setContentIntent(open)
             .setAutoCancel(true)
@@ -75,18 +91,19 @@ internal class EventReminders(private val context: Context) {
         try {
             notifications.notify(id, NOTIFICATION_ID, notification)
             deliveries.edit().putString(id, scheduledTime).apply()
+            synchronize(event)
         } catch (_: SecurityException) {
             // Notifications were disabled while preparing this reminder.
         }
     }
 
     private fun synchronize(event: Event) {
+        val next = event.nextReminderAfter(LocalDateTime.now())
         val intent = Intent(context, EventReminderReceiver::class.java)
             .setData(eventUri(event.id))
-            .putExtra(EXPECTED_TIME, event.time)
-        val time = event.timeInMillis()
-        if (!event.reminderEnabled || event.completed || time == null || time <= System.currentTimeMillis() ||
-            deliveries.getString(event.id, null) == event.time) {
+            .putExtra(EXPECTED_TIME, next?.toString())
+        val time = next?.atZone(ZoneId.systemDefault())?.toInstant()?.toEpochMilli()
+        if (time == null) {
             val existing = PendingIntent.getBroadcast(
                 context, 0, intent, PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
             )

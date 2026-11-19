@@ -2,6 +2,8 @@ package com.nexttodo.app
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
+import android.app.DatePickerDialog
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -32,6 +34,13 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.key
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
@@ -71,6 +80,7 @@ private val weekdays = listOf("一", "二", "三", "四", "五", "六", "日")
 private val calendarStart = LocalDate.of(1900, 1, 1)
 private val calendarSize = ChronoUnit.DAYS.between(calendarStart, LocalDate.of(2201, 1, 1)).toInt()
 private const val VISIBLE_DAYS = 7
+private enum class TodayPeriod(val label: String) { DAY("每日待办"), WEEK("每周待办"), MONTH("每月待办") }
 
 private fun pageFor(day: LocalDate) = ChronoUnit.DAYS.between(calendarStart, day)
     .coerceIn(0L, calendarSize.toLong() - 1).toInt()
@@ -87,9 +97,14 @@ internal fun TodayScreen(
     onEnterFocus: () -> Unit,
 ) {
     val today = LocalDate.now()
-    val eventsByDay = model.events.groupBy { it.calendarDay ?: today }
+    var period by rememberSaveable { mutableStateOf(TodayPeriod.DAY) }
+    val start = when (period) { TodayPeriod.DAY -> selectedDay; TodayPeriod.WEEK -> selectedDay.monday(); TodayPeriod.MONTH -> selectedDay.withDayOfMonth(1) }
+    val end = when (period) { TodayPeriod.DAY -> selectedDay; TodayPeriod.WEEK -> start.plusDays(6); TodayPeriod.MONTH -> selectedDay.withDayOfMonth(selectedDay.lengthOfMonth()) }
+    val displayed = periodEvents(model.events, start, end)
+    val counts = (-14L..14L).associate { offset -> selectedDay.plusDays(offset).let { day -> day to model.events.count { it.onDate(day) != null } } }
     Column(Modifier.fillMaxSize()) {
-        DateSelector(selectedDay, today, eventsByDay.mapValues { it.value.size }, onDayChange)
+        DateSelector(selectedDay, today, counts, onDayChange, period) { period = it }
+        if (period != TodayPeriod.DAY) Text("${period.label} · $start — $end", Modifier.padding(horizontal = 20.dp, vertical = 8.dp), style = MaterialTheme.typography.bodySmall)
         val enterFocus by rememberUpdatedState(onEnterFocus)
         Box(Modifier.weight(1f).fillMaxWidth()
             .semantics { customActions = listOf(CustomAccessibilityAction("打开 Today 全屏") { enterFocus(); true }) }
@@ -113,13 +128,15 @@ internal fun TodayScreen(
                 model.busy && model.events.isEmpty() -> CircularProgressIndicator(
                     modifier = Modifier.align(Alignment.Center),
                 )
-                else -> key(selectedDay) {
+                else -> key(selectedDay, period) {
                     EventList(
-                        events = eventsByDay[selectedDay].orEmpty(),
+                        events = displayed,
                         enabled = !model.busy,
                         onOpen = onOpen,
                         onToggle = model::complete,
                         onMove = model::movePending,
+                        onPin = model::pin, onDelete = model::delete,
+                        allowReorder = period == TodayPeriod.DAY,
                     )
                 }
             }
@@ -144,10 +161,18 @@ private fun DateSelector(
     today: LocalDate,
     eventCounts: Map<LocalDate, Int>,
     onDayChange: (LocalDate) -> Unit,
+    period: TodayPeriod,
+    onPeriodChange: (TodayPeriod) -> Unit,
 ) {
     val blue = todayHeaderBackground
     val foreground = todayHeaderForeground
     val state = rememberPagerState(initialPage = pageFor(selectedDay)) { calendarSize }
+    val context = LocalContext.current
+    val dialogTheme = if (timetableDark) R.style.Theme_NextToDo_Dialog_Dark else R.style.Theme_NextToDo_Dialog_Light
+    var menu by remember { mutableStateOf(false) }
+    LaunchedEffect(selectedDay) {
+        if (state.settledPage != pageFor(selectedDay)) state.requestScrollToPage(pageFor(selectedDay))
+    }
     val daysFromToday = ChronoUnit.DAYS.between(today, dayFor(state.currentPage))
     val relativeDayLabel = when {
         daysFromToday > 0 -> "距离 $daysFromToday 天"
@@ -167,20 +192,31 @@ private fun DateSelector(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = CircleShape) {
+                Box {
+                Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = CircleShape,
+                    modifier = Modifier.clickable { menu = true }.semantics { contentDescription = "切换待办范围" }) {
                     Image(
                         painter = painterResource(R.drawable.nexttodo_logo),
                         contentDescription = null,
                         modifier = Modifier.size(40.dp).padding(4.dp),
                     )
                 }
+                DropdownMenu(menu, { menu = false }) {
+                    TodayPeriod.entries.forEach { option -> DropdownMenuItem(text = { Text(option.label + if (period == option) " ✓" else "") },
+                        onClick = { onPeriodChange(option); menu = false }) }
+                }
+                }
                 Text(
                     dayFor(state.currentPage).format(monthFormat),
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).clickable {
+                        DatePickerDialog(context, dialogTheme, { _, y, m, d -> state.requestScrollToPage(pageFor(LocalDate.of(y, m + 1, d))) },
+                            selectedDay.year, selectedDay.monthValue - 1, selectedDay.dayOfMonth).show()
+                    },
                 )
-                TextButton(onClick = { state.requestScrollToPage(pageFor(today)) }) {
+                TextButton(onClick = { state.requestScrollToPage(pageFor(today)) },
+                    modifier = Modifier.semantics { contentDescription = "回到今天" }) {
                     Text(relativeDayLabel, color = foreground)
                 }
             }
@@ -203,7 +239,7 @@ private fun DateSelector(
                     val active = page == state.currentPage
                     val weekday = weekdays[date.dayOfWeek.value - 1]
                     Column(
-                        Modifier.fillMaxSize().padding(top = 58.dp)
+                        Modifier.fillMaxSize().padding(top = 58.dp).clickable { state.requestScrollToPage(page) }
                             .semantics {
                                 selected = active
                                 contentDescription = "${date.format(dayFormat)}，星期$weekday，$count 个事件"

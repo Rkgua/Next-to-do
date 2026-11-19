@@ -88,9 +88,10 @@ internal fun TodayFocusScreen(day: LocalDate, events: EventViewModel, timetable:
                             modifier = Modifier.padding(20.dp)) { Text("重新读取事件") }
                         events.busy && events.events.isEmpty() -> CircularProgressIndicator(Modifier.align(Alignment.Center))
                         else -> EventList(
-                            events = appearance.sort.sorted(events.events.filter { (it.calendarDay ?: LocalDate.now()) == day }),
+                            events = appearance.sort.sorted(events.events.mapNotNull { it.onDate(day) }),
                             enabled = !events.busy, onOpen = onOpen, onToggle = events::complete,
                             onMove = events::movePending, allowReorder = appearance.sort == TodaySort.MANUAL,
+                            onPin = events::pin, onDelete = events::delete,
                             wallpaperInk = ink,
                         )
                     }

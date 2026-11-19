@@ -191,10 +191,11 @@ private fun NextToDo(
     var showingPomodoro by rememberSaveable { mutableStateOf(false) }
     var timetableTabsVisible by rememberSaveable { mutableStateOf(true) }
     var todayFocus by rememberSaveable { mutableStateOf(false) }
+    var courseJump by remember { mutableIntStateOf(0) }
     LaunchedEffect(tab) { timetableTabsVisible = true }
     var selectedDate by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
     val selectedDay = LocalDate.parse(selectedDate)
-    val detail = model.events.firstOrNull { it.id == detailId }
+    val detail = model.events.firstOrNull { it.id == detailId }?.let { it.onDate(selectedDay) ?: it }
     val showingToday = tab == Tab.DAILY && detail == null
     val showingTimetable = tab == Tab.SCHEDULE
     val keyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
@@ -274,7 +275,7 @@ private fun NextToDo(
                     selectedDay = selectedDay,
                     onDayChange = { selectedDate = it.toString() },
                     model = model,
-                    onOpen = { detailId = it.id },
+                    onOpen = { detailId = it.id; it.occurrenceDate?.let { day -> selectedDate = day.toString() } },
                     onAdd = {
                         model.clearDraft(selectedDay)
                         tab = Tab.ADD

@@ -58,6 +58,14 @@ internal class EventStore(private val context: Context) :
                         description = json.getString("description"),
                         time = json.getString("time"),
                         reminderEnabled = json.optBoolean("reminderEnabled"),
+                        endTime = json.optString("endTime"),
+                        endDay = json.optString("endDay").takeIf(String::isNotBlank)?.let(LocalDate::parse),
+                        repetition = EventRepeat.entries.find { it.name == json.optString("repetition") } ?: EventRepeat.NONE,
+                        repeatDays = json.optJSONArray("repeatDays")?.let { days -> (0 until days.length()).map { days.getInt(it) }.toSet() }.orEmpty(),
+                        repeatInterval = json.optInt("repeatInterval", 2).coerceIn(1, 365),
+                        repeatWorkDays = json.optInt("repeatWorkDays", 1).coerceIn(1, 365),
+                        completedDates = json.optJSONArray("completedDates")?.let { days -> (0 until days.length()).map { LocalDate.parse(days.getString(it)) }.toSet() }.orEmpty(),
+                        pinned = json.optBoolean("pinned"),
                         day = json.optString("day").takeIf(String::isNotBlank)?.let(LocalDate::parse),
                         originalImage = readAttachment(json.optJSONObject("originalImage")),
                         fields = List(fields.length()) { index ->
@@ -115,6 +123,11 @@ internal class EventStore(private val context: Context) :
         check(writableDatabase.update("events", values, "id = ?", arrayOf(id)) == 1)
     }
 
+    fun delete(event: Event) {
+        check(writableDatabase.delete("events", "id = ?", arrayOf(event.id)) == 1)
+        attachmentIds(event).forEach { File(attachments, it).delete() }
+    }
+
     fun saveOrder(ids: List<String>) {
         val db = writableDatabase
         db.beginTransaction()
@@ -170,6 +183,11 @@ internal class EventStore(private val context: Context) :
         .put("description", event.description)
         .put("time", event.time)
         .put("reminderEnabled", event.reminderEnabled)
+        .put("endTime", event.endTime).put("endDay", event.endDay?.toString())
+        .put("repetition", event.repetition.name).put("repeatDays", JSONArray(event.repeatDays.toList()))
+        .put("repeatInterval", event.repeatInterval).put("pinned", event.pinned)
+        .put("repeatWorkDays", event.repeatWorkDays)
+        .put("completedDates", JSONArray(event.completedDates.map(LocalDate::toString)))
         .put("day", event.day?.toString())
         .put("originalImage", attachmentJson(event.originalImage))
         .put("fields", JSONArray(event.fields.map { field ->

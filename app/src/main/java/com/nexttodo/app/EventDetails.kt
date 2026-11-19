@@ -64,7 +64,7 @@ internal fun EventDetails(
     onEdit: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
-    val time = if (event.time.isNotBlank()) eventTimeLabel(event.time) else event.day?.format(dayFormat)
+    val time = event.scheduleLabel().takeIf { it.isNotBlank() }
     val attributes = event.fields.filter {
         (it.type == FieldType.TEXT || it.type == FieldType.TIME) && it.value.isNotBlank()
     }
