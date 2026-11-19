@@ -155,6 +155,7 @@ internal class EventViewModel(application: Application) : AndroidViewModel(appli
         viewModelScope.launch {
             try {
                 action()
+                LiveStatus.request(getApplication())
             } catch (exception: CancellationException) {
                 throw exception
             } catch (exception: Exception) {

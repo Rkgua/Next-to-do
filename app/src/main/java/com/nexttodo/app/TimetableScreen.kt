@@ -101,7 +101,7 @@ internal val courseColors = listOf(
     Color(0xFF8E9BD5), Color(0xFF70BFC8), Color(0xFF789DBF), Color(0xFFA394CE),
 )
 internal val timetableDays = listOf("一", "二", "三", "四", "五", "六", "日")
-private val periodTimes = listOf(
+internal val periodTimes = listOf(
     "08:00" to "08:45", "08:55" to "09:40", "10:00" to "10:45", "10:55" to "11:40",
     "14:00" to "14:45", "14:55" to "15:40", "16:00" to "16:45", "16:55" to "17:40",
     "19:00" to "19:45", "19:55" to "20:40",

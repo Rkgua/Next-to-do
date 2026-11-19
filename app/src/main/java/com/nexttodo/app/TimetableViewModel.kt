@@ -429,7 +429,7 @@ private fun CourseSlot.importFields() = copy(color = null, credits = "", customT
 
 private fun JSONArray.objects() = List(length()) { getJSONObject(it) }
 
-private fun JSONArray.readCourses() = objects().map { row ->
+internal fun JSONArray.readCourses() = objects().map { row ->
     CourseSlot(
         row.getString("name"),
         row.optInt("day").takeIf { it in 1..7 },

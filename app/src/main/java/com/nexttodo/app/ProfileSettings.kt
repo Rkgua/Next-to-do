@@ -72,6 +72,7 @@ internal fun ProfileSettings(
         SettingsSection("DeepSeek") { DeepSeekSettings(settings) }
         SettingsSection("版本更新") { UpdateSettings(updates) }
         SettingsSection("权限") { PermissionSettings(lifecycle) }
+        SettingsSection("实时提醒") { LiveStatusSettings() }
         SettingsSection("外观") {
             Row(
                 Modifier.horizontalScroll(rememberScrollState()),

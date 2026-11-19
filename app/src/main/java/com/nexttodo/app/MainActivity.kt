@@ -54,6 +54,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.key
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -72,6 +73,8 @@ import java.time.LocalDate
 
 class MainActivity : ComponentActivity() {
     private var timerRequests by mutableIntStateOf(0)
+    private var timetableRequests by mutableIntStateOf(0)
+    private var todayRequests by mutableIntStateOf(0)
     private var eventRequest by mutableStateOf<Pair<Int, String>?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -91,7 +94,7 @@ class MainActivity : ComponentActivity() {
                 AppTheme.DARK -> true
             }
             MaterialTheme(colorScheme = if (dark) DarkColors else LightColors) {
-                NextToDo(model, timetable, todayAppearance, updates, settings, lifecycle, theme, dark, window, timerRequests, eventRequest) {
+                NextToDo(model, timetable, todayAppearance, updates, settings, lifecycle, theme, dark, window, timerRequests, timetableRequests, todayRequests, eventRequest) {
                     settings.theme = it
                     theme = it
                 }
@@ -105,7 +108,17 @@ class MainActivity : ComponentActivity() {
         handleNavigationIntent(intent)
     }
 
+    override fun onResume() {
+        super.onResume()
+        LiveStatus.request(this)
+    }
+
     private fun handleNavigationIntent(intent: Intent) {
+        if (intent.getBooleanExtra("OPEN_TODAY", false)) { todayRequests++; intent.removeExtra("OPEN_TODAY") }
+        if (intent.getBooleanExtra("OPEN_TIMETABLE", false)) {
+            timetableRequests++
+            intent.removeExtra("OPEN_TIMETABLE")
+        }
         if (intent.getBooleanExtra(PomodoroTimer.OPEN_POMODORO, false)) {
             timerRequests += 1
             intent.removeExtra(PomodoroTimer.OPEN_POMODORO)
@@ -183,6 +196,8 @@ private fun NextToDo(
     dark: Boolean,
     window: Window,
     timerRequests: Int,
+    timetableRequests: Int,
+    todayRequests: Int,
     eventRequest: Pair<Int, String>?,
     onThemeChange: (AppTheme) -> Unit,
 ) {
@@ -236,6 +251,8 @@ private fun NextToDo(
             tab = Tab.DAILY
         }
     }
+    LaunchedEffect(timetableRequests) { if (timetableRequests > 0) { detailId = null; tab = Tab.SCHEDULE } }
+    LaunchedEffect(todayRequests) { if (todayRequests > 0) { detailId = null; selectedDate = LocalDate.now().toString(); tab = Tab.DAILY } }
     BackHandler(tab != Tab.DAILY || detailId != null) {
         if (tab == Tab.PROFILE && showingPomodoro) {
             showingPomodoro = false
@@ -258,6 +275,12 @@ private fun NextToDo(
             )
             .imePadding(),
         containerColor = MaterialTheme.colorScheme.background,
+        topBar = { key(timerRequests, timetableRequests, todayRequests, eventRequest?.first) { LiveStatusCapsule { target ->
+            detailId = null
+            if (target == "timer") { tab = Tab.PROFILE; showingPomodoro = true }
+            else if (target == "courses") { courseJump++; tab = Tab.SCHEDULE }
+            else { selectedDate = LocalDate.now().toString(); tab = Tab.DAILY }
+        } } },
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             if (!keyboardVisible && !showingTimetable) {
@@ -292,10 +315,10 @@ private fun NextToDo(
         if (showingTimetable) {
             // The wallpaper and course viewport keep a fixed size. Only the overlaid bar moves.
             Box(Modifier.fillMaxSize().padding(top = padding.calculateTopPadding()).clipToBounds()) {
-                TimetableScreen(timetable,
+                key(timetableRequests, courseJump) { TimetableScreen(timetable,
                     bottomContentPadding = 68.dp + WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding(),
                     onHideNavigation = { timetableTabsVisible = false },
-                    onToggleNavigation = { timetableTabsVisible = !timetableTabsVisible })
+                    onToggleNavigation = { timetableTabsVisible = !timetableTabsVisible }) }
                 AnimatedVisibility(visible = !keyboardVisible && timetableTabsVisible,
                     modifier = Modifier.align(Alignment.BottomCenter),
                     enter = slideInVertically(tween(280, easing = FastOutSlowInEasing)) { it } + fadeIn(tween(180)),
