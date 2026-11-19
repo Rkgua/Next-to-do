@@ -137,6 +137,7 @@ internal fun EventDetails(
             if (time != null || (event.reminderEnabled && !event.completed)) {
                 DetailCard {
                     if (time != null) DetailValue(if (event.time.isBlank()) "日期" else "事件时间", time)
+                    SystemAlarmButton(event, editable)
                     if (event.reminderEnabled && !event.completed) {
                         if (time != null) HorizontalDivider(color = colors.outlineVariant)
                         DetailValue("到点提醒", "已开启")

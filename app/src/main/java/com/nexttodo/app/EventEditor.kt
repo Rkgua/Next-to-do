@@ -105,6 +105,7 @@ internal fun EventEditor(
             }
             hint?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         }
+        SystemAlarmButton(event, enabled)
         AttachmentField("原图", event.originalImage, FieldType.IMAGE, enabled) {
             onChange(event.copy(originalImage = it))
         }
