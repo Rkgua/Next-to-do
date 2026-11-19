@@ -118,6 +118,7 @@ private fun CourseSlot.inGrid() = weekday != null && firstPeriod != null &&
 @Composable
 internal fun TimetableScreen(model: TimetableViewModel, previewTable: Timetable? = null, isPreview: Boolean = false,
     initialWeek: Int? = null, bottomContentPadding: Dp = 0.dp,
+    drawWallpaper: Boolean = true,
     onHideNavigation: () -> Unit = {}, onToggleNavigation: () -> Unit = {}) {
     val today = LocalDate.now()
     val table = previewTable ?: model.selected
@@ -170,9 +171,9 @@ internal fun TimetableScreen(model: TimetableViewModel, previewTable: Timetable?
         if (Color(it).luminance() > .5f) Color(0xFF17171C) else Color.White
     } ?: if (table.skin != TimetableSkin.DEFAULT) Color(textColors.header) else timetableInk
     Box(
-        Modifier.fillMaxSize().background(timetableTop).onSizeChanged { viewport = it },
+        Modifier.fillMaxSize().background(if (drawWallpaper) timetableTop else Color.Transparent).onSizeChanged { viewport = it },
     ) {
-        TimetableWallpaper(table.skin, table.backgroundImage, Modifier.matchParentSize(), table.style.backgroundDim)
+        if (drawWallpaper) TimetableWallpaper(table.skin, table.backgroundImage, Modifier.matchParentSize(), table.style.backgroundDim)
         Column(Modifier.fillMaxSize()) {
             Row(
                 Modifier.fillMaxWidth().background(table.style.headerBackgroundColor?.let(::Color) ?: Color.Transparent)

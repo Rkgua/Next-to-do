@@ -3,6 +3,7 @@ package com.nexttodo.app
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import android.app.DatePickerDialog
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -100,7 +101,7 @@ internal fun TodayScreen(
     val start = period.start(selectedDay)
     val end = period.end(selectedDay)
     val displayed = remember(model.events, start, end) { periodEvents(model.events, start, end) }
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         key(period) { DateSelector(selectedDay, today, model.events, onDayChange, period) { period = it } }
         if (period != TodayPeriod.DAY) Text("${period.label} · $start — $end", Modifier.padding(horizontal = 20.dp, vertical = 8.dp), style = MaterialTheme.typography.bodySmall)
         val enterFocus by rememberUpdatedState(onEnterFocus)

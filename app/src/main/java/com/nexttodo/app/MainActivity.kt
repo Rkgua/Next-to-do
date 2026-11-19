@@ -262,8 +262,8 @@ private fun NextToDo(
         }
     }
 
-    Scaffold(
-        modifier = Modifier.background(
+    Box(
+        modifier = Modifier.fillMaxSize().background(
             when {
                 showingToday -> todayHeaderBackground
                 showingTimetable -> timetable.selected.style.headerBackgroundColor?.let(::Color) ?: timetableTop
@@ -274,7 +274,13 @@ private fun NextToDo(
                 WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
             )
             .imePadding(),
-        containerColor = MaterialTheme.colorScheme.background,
+    ) {
+    if (showingTimetable) {
+        val table = timetable.selected
+        TimetableWallpaper(table.skin, table.backgroundImage, Modifier.matchParentSize(), table.style.backgroundDim)
+    }
+    Scaffold(
+        containerColor = Color.Transparent,
         topBar = { key(timerRequests, timetableRequests, todayRequests, eventRequest?.first) { LiveStatusCapsule { target ->
             detailId = null
             if (target == "timer") { tab = Tab.PROFILE; showingPomodoro = true }
@@ -316,6 +322,7 @@ private fun NextToDo(
             // The wallpaper and course viewport keep a fixed size. Only the overlaid bar moves.
             Box(Modifier.fillMaxSize().padding(top = padding.calculateTopPadding()).clipToBounds()) {
                 key(timetableRequests, courseJump) { TimetableScreen(timetable,
+                    drawWallpaper = false,
                     bottomContentPadding = 68.dp + WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding(),
                     onHideNavigation = { timetableTabsVisible = false },
                     onToggleNavigation = { timetableTabsVisible = !timetableTabsVisible }) }
@@ -383,6 +390,7 @@ private fun NextToDo(
                 }
             }
         }
+    }
     }
 }
 
