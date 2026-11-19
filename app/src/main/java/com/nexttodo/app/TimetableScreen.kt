@@ -179,7 +179,8 @@ internal fun TimetableScreen(model: TimetableViewModel, previewTable: Timetable?
                     .heightIn(min = 46.dp).padding(start = 12.dp, end = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(Modifier.weight(1f)) {
+                Column(Modifier.weight(1f).clickable(enabled = enabled) { controls = true }
+                    .semantics { contentDescription = "课表周数与日期，打开课表与周数" }) {
                     val day = timetableDays[today.dayOfWeek.value - 1]
                     Text(
                         if (week == currentWeek) "第${week}周 周$day" else "第${week}周(非本周)",
