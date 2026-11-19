@@ -133,6 +133,11 @@ internal fun TodayScreen(
                         onMove = model::movePending,
                         onPin = model::pin, onDelete = model::delete,
                         allowReorder = period == TodayPeriod.DAY,
+                        emptyLabel = when (period) {
+                            TodayPeriod.DAY -> "这天暂无待办"
+                            TodayPeriod.WEEK -> "本周暂无待办"
+                            TodayPeriod.MONTH -> "本月暂无待办"
+                        },
                     )
                 }
             }

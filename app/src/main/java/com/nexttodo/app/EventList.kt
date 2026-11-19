@@ -1,6 +1,7 @@
 package com.nexttodo.app
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -47,6 +48,7 @@ import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -68,13 +70,17 @@ internal fun EventList(
     onDelete: (Event) -> Unit = {},
     allowReorder: Boolean = true,
     wallpaperInk: Color? = null,
+    emptyLabel: String = "这天暂无待办",
 ) {
     if (events.isEmpty()) {
-        Text(
-            "这天暂无事件",
-            modifier = Modifier.padding(20.dp),
-            color = wallpaperInk ?: MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Image(painterResource(R.drawable.empty_plan), contentDescription = null, modifier = Modifier.size(160.dp))
+                Text(emptyLabel, color = wallpaperInk ?: MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyLarge)
+            }
+        }
         return
     }
     var deleting by remember { mutableStateOf<Event?>(null) }
