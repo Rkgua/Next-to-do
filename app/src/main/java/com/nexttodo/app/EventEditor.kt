@@ -2,7 +2,6 @@ package com.nexttodo.app
 
 import android.app.DatePickerDialog
 import android.app.NotificationManager
-import android.app.TimePickerDialog
 import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -25,6 +24,10 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
@@ -271,9 +274,10 @@ internal fun TimeField(
     } else {
         R.style.Theme_NextToDo_Dialog_Light
     }
+    var pickingTime by remember(value, initialDate) { mutableStateOf<LocalDateTime?>(null) }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(
-            onClick = { pickDateTime(context, dialogTheme, value, initialDate, onChange) },
+            onClick = { pickEventDate(context, dialogTheme, value, initialDate) { pickingTime = it } },
             enabled = enabled,
             modifier = Modifier.weight(1f),
         ) {
@@ -289,15 +293,20 @@ internal fun TimeField(
             TextButton(onClick = { onChange("") }, enabled = enabled) { Text("清除") }
         }
     }
-
+    pickingTime?.let { initial ->
+        WheelTimePicker(label, initial, onDismiss = { pickingTime = null }, onConfirm = { time ->
+            pickingTime = null
+            onChange(initial.toLocalDate().atTime(time).toString())
+        })
+    }
 }
 
-private fun pickDateTime(
+private fun pickEventDate(
     context: Context,
     dialogTheme: Int,
     value: String,
     initialDate: LocalDate?,
-    onChange: (String) -> Unit,
+    onPick: (LocalDateTime) -> Unit,
 ) {
     val now = LocalDateTime.now()
     val initial = when {
@@ -306,8 +315,6 @@ private fun pickDateTime(
         else -> now
     }
     DatePickerDialog(context, dialogTheme, { _, year, month, day ->
-        TimePickerDialog(context, dialogTheme, { _, hour, minute ->
-            onChange(LocalDateTime.of(year, month + 1, day, hour, minute).toString())
-        }, initial.hour, initial.minute, true).show()
+        onPick(LocalDateTime.of(year, month + 1, day, initial.hour, initial.minute))
     }, initial.year, initial.monthValue - 1, initial.dayOfMonth).show()
 }
