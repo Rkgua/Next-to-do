@@ -103,10 +103,10 @@ internal fun TodayScreen(
 ) {
     val now = rememberEventNow(model.events)
     val today = now.toLocalDate()
-    val ongoing = remember(model.events, now) { activeLongEvents(model.events, now) }
     var period by rememberSaveable { mutableStateOf(TodayPeriod.DAY) }
     val start = period.start(selectedDay)
     val end = period.end(selectedDay)
+    val ongoing = remember(model.events, now, start, end) { activeLongEvents(model.events, now, start, end) }
     val displayed = remember(model.events, start, end) { periodEvents(model.events, start, end) }
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         key(period) { DateSelector(selectedDay, today, model.events, onDayChange, period) { period = it } }
@@ -140,7 +140,7 @@ internal fun TodayScreen(
                         enabled = !model.busy,
                         onOpen = onOpen,
                         onToggle = model::complete,
-                        onMove = model::movePending,
+                        onMove = model::moveEvent,
                         onPin = model::pin, onDelete = model::delete,
                         allowReorder = period == TodayPeriod.DAY,
                         ongoingEvents = ongoing,

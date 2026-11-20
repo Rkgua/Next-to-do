@@ -133,13 +133,9 @@ internal class EventViewModel(application: Application) : AndroidViewModel(appli
         events = events.filterNot { it.id == base.id }
     }
 
-    fun movePending(id: String, targetId: String) {
-        val from = events.indexOfFirst { it.id == id && !it.completed }
-        val to = events.indexOfFirst { it.id == targetId && !it.completed }
-        if (from < 0 || to < 0 || from == to) return
-        if (events[from].pinned != events[to].pinned) return
-        val reordered = events.toMutableList().apply { add(to, removeAt(from)) }
-        write("无法保存待办顺序") {
+    fun moveEvent(id: String, targetId: String) {
+        val reordered = reorderedEvents(events, id, targetId) ?: return
+        write("无法保存事件顺序") {
             withContext(Dispatchers.IO) { store.saveOrder(reordered.map(Event::id)) }
             events = reordered
         }

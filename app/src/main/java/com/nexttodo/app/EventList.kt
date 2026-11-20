@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Checkbox
@@ -95,12 +96,36 @@ internal fun EventList(
     val (completed, pending) = events.filterNot { eventListKey(it) in ongoingKeys }
         .sortedByDescending { it.pinned }.partition { it.completed }
     val listState = rememberLazyListState()
-    val latestPending by rememberUpdatedState(pending.associateBy(::eventListKey))
+    val ongoing = ongoingEvents.sortedByDescending { it.pinned }
+    val latestGroups by rememberUpdatedState(listOf(
+        ongoing.associateBy { "long:${eventListKey(it)}" },
+        pending.associateBy(::eventListKey), completed.associateBy(::eventListKey),
+    ))
     val latestEnabled by rememberUpdatedState(enabled && allowReorder)
     val latestOnMove by rememberUpdatedState(onMove)
     val autoScrollZone = with(LocalDensity.current) { 54.dp.toPx() }
     val maxScroll = with(LocalDensity.current) { 8.dp.toPx() }
     var drag by remember { mutableStateOf<PendingDrag?>(null) }
+
+    fun LazyListScope.eventRows(group: List<Event>, prefix: String = "") {
+        items(group, key = { prefix + eventListKey(it) }) { event ->
+            val peers = group.filter { it.pinned == event.pinned }
+            val index = peers.indexOf(event)
+            val reorderActions = if (enabled && allowReorder) buildList {
+                peers.getOrNull(index - 1)?.let { previous ->
+                    add(CustomAccessibilityAction("上移") { onMove(event.id, previous.id); true })
+                }
+                peers.getOrNull(index + 1)?.let { next ->
+                    add(CustomAccessibilityAction("下移") { onMove(event.id, next.id); true })
+                }
+            } else emptyList()
+            SwipeEventRow(event, enabled, onOpen, onToggle,
+                onPin = onPin, onDelete = { deleting = it },
+                modifier = Modifier.animateItem().alpha(if (drag?.event == event) .22f else 1f),
+                showHandle = enabled && allowReorder && peers.size > 1,
+                reorderActions = reorderActions, wallpaperInk = wallpaperInk)
+        }
+    }
 
     LaunchedEffect(drag?.event?.id) {
         while (drag != null) {
@@ -121,11 +146,14 @@ internal fun EventList(
             .pointerInput(listState) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
-                    if (!latestEnabled || latestPending.size < 2) return@awaitEachGesture
+                    if (!latestEnabled) return@awaitEachGesture
                     val item = listState.layoutInfo.visibleItemsInfo.firstOrNull {
                         down.position.y >= it.offset && down.position.y < it.offset + it.size
                     } ?: return@awaitEachGesture
-                    val event = (item.key as? String)?.let(latestPending::get) ?: return@awaitEachGesture
+                    val group = latestGroups.firstOrNull { it.containsKey(item.key) } ?: return@awaitEachGesture
+                    val event = group[item.key] ?: return@awaitEachGesture
+                    val peers = group.filterValues { it.pinned == event.pinned }
+                    if (peers.size < 2) return@awaitEachGesture
                     val onHandle = down.position.x >= size.width - 44.dp.toPx()
                     val (start, initialDelta) = if (onHandle) {
                         awaitHandleDrag(down) ?: return@awaitEachGesture
@@ -149,11 +177,14 @@ internal fun EventList(
                     val current = drag
                     drag = null
                     if (dropped && current != null) {
+                        if (!latestEnabled) return@awaitEachGesture
+                        val targets = latestGroups.firstOrNull { it.containsKey(item.key) }
+                            ?.filterValues { it.pinned == current.event.pinned } ?: return@awaitEachGesture
                         val target = listState.layoutInfo.visibleItemsInfo
-                            .filter { (it.key as? String)?.let(latestPending::containsKey) == true }
+                            .filter { targets.containsKey(it.key) }
                             .minByOrNull { abs(current.center - (it.offset + it.size / 2f)) }
-                        val targetId = target?.key as? String ?: latestPending.values.lastOrNull()?.let(::eventListKey)
-                        val targetEvent = targetId?.let(latestPending::get)
+                        val targetId = target?.key as? String ?: targets.keys.lastOrNull()
+                        val targetEvent = targetId?.let(targets::get)
                         if (targetEvent != null && targetEvent.id != current.event.id) {
                             latestOnMove(current.event.id, targetEvent.id)
                         }
@@ -167,33 +198,11 @@ internal fun EventList(
             contentPadding = PaddingValues(bottom = 88.dp),
         ) {
             if (ongoingEvents.isNotEmpty()) item(key = "long-events-heading") { SectionLabel("长期事件", wallpaperInk) }
-            items(ongoingEvents.sortedByDescending { it.pinned }, key = { "long:${eventListKey(it)}" }) { event ->
-                SwipeEventRow(event, enabled, onOpen, onToggle, onPin = onPin,
-                    onDelete = { deleting = it }, wallpaperInk = wallpaperInk)
-            }
+            eventRows(ongoing, "long:")
             if (pending.isNotEmpty()) item { SectionLabel("待完成 · ${pending.size}", wallpaperInk) }
-            items(pending, key = ::eventListKey) { event ->
-                val index = pending.indexOf(event)
-                val reorderActions = if (enabled && allowReorder) buildList {
-                    pending.getOrNull(index - 1)?.let { previous ->
-                        add(CustomAccessibilityAction("上移") { onMove(event.id, previous.id); true })
-                    }
-                    pending.getOrNull(index + 1)?.let { next ->
-                        add(CustomAccessibilityAction("下移") { onMove(event.id, next.id); true })
-                    }
-                } else emptyList()
-                SwipeEventRow(
-                    event, enabled, onOpen, onToggle,
-                    onPin = onPin, onDelete = { deleting = it },
-                    modifier = Modifier.animateItem().alpha(if (drag?.event?.id == event.id) 0.22f else 1f),
-                    showHandle = allowReorder && pending.size > 1,
-                    reorderActions = reorderActions,
-                    wallpaperInk = wallpaperInk,
-                )
-            }
+            eventRows(pending)
             if (completed.isNotEmpty()) item { SectionLabel("已完成 · ${completed.size}", wallpaperInk) }
-            items(completed, key = ::eventListKey) { SwipeEventRow(it, enabled, onOpen, onToggle,
-                onPin = onPin, onDelete = { deleting = it }, wallpaperInk = wallpaperInk) }
+            eventRows(completed)
         }
         drag?.let { current ->
             EventRow(
@@ -251,11 +260,21 @@ internal fun EventRow(
     reorderActions: List<CustomAccessibilityAction> = emptyList(),
     wallpaperInk: Color? = null,
 ) {
-    val cardColor = if (wallpaperInk == null) null else
-        if (wallpaperInk.luminance() < .5f) Color.White.copy(alpha = .87f) else Color(0xFF151A24).copy(alpha = .82f)
+    // Wallpaper cards follow their text contrast; other cards follow the app theme.
+    val darkCard = wallpaperInk?.let { it.luminance() >= .5f }
+        ?: (MaterialTheme.colorScheme.background.luminance() < .5f)
+    val cardColor = when {
+        // Like pinned chats, use a quiet neutral fill rather than an accent color.
+        event.pinned -> (if (darkCard) Color(0xFF2C2C2E) else Color(0xFFEDEDED))
+            .copy(alpha = if (wallpaperInk == null) 1f else .94f)
+        wallpaperInk != null -> if (darkCard) Color(0xFF151A24).copy(alpha = .82f)
+            else Color.White.copy(alpha = .87f)
+        event.completed -> MaterialTheme.colorScheme.primaryContainer
+        else -> MaterialTheme.colorScheme.surface
+    }
     Surface(
         modifier = modifier.semantics { customActions = reorderActions },
-        color = cardColor ?: if (event.completed) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+        color = cardColor,
         contentColor = wallpaperInk ?: MaterialTheme.colorScheme.onSurface,
         shape = MaterialTheme.shapes.large,
         shadowElevation = if (dragging) 8.dp else 0.dp,
@@ -275,7 +294,7 @@ internal fun EventRow(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(
-                    (if (event.pinned) "置顶 · " else "") + event.title,
+                    event.title,
                     style = MaterialTheme.typography.titleMedium,
                     textDecoration = if (event.completed) TextDecoration.LineThrough else TextDecoration.None,
                 )

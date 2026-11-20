@@ -6,6 +6,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import kotlinx.coroutines.delay
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
 
@@ -27,11 +28,17 @@ internal fun Event.withDuration(enabled: Boolean, now: LocalDateTime): Event {
         repetition = EventRepeat.NONE, repeatDays = emptySet(), completedDates = emptySet())
 }
 
-internal fun activeLongEvents(events: List<Event>, now: LocalDateTime): List<Event> = events.mapNotNull { event ->
+internal fun activeLongEvents(events: List<Event>, now: LocalDateTime,
+    rangeStart: LocalDate = now.toLocalDate(), rangeEnd: LocalDate = rangeStart): List<Event> = events.mapNotNull { event ->
     if (!event.isDuration) return@mapNotNull null
     val displayed = event.onDate(now.toLocalDate()) ?: return@mapNotNull null
     val shift = ChronoUnit.DAYS.between(event.startDay(), displayed.occurrenceDate)
-    displayed.takeIf { now >= event.durationStart().plusDays(shift) && now < event.durationEnd().plusDays(shift) }
+    val start = event.durationStart().plusDays(shift)
+    val end = event.durationEnd().plusDays(shift)
+    // An active event belongs only to viewed days that overlap this occurrence.
+    // The end is exclusive, so a midnight finish does not occupy the next day.
+    displayed.takeIf { now >= start && now < end &&
+        rangeStart.atStartOfDay() < end && rangeEnd.plusDays(1).atStartOfDay() > start }
 }
 
 @Composable

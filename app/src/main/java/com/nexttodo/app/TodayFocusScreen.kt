@@ -43,7 +43,7 @@ internal fun TodayFocusScreen(day: LocalDate, events: EventViewModel, timetable:
     var backgrounds by rememberSaveable { mutableStateOf(false) }
     var viewport by remember { mutableStateOf(IntSize.Zero) }
     val now = rememberEventNow(events.events)
-    val ongoing = remember(events.events, now) { activeLongEvents(events.events, now) }
+    val ongoing = remember(events.events, now, day) { activeLongEvents(events.events, now, day) }
     val dismiss by rememberUpdatedState(onDismiss)
     val background = appearance.effective(timetable.selected)
     val ink = background.headerColor?.let(::Color)
@@ -92,10 +92,10 @@ internal fun TodayFocusScreen(day: LocalDate, events: EventViewModel, timetable:
                         else -> EventList(
                             events = appearance.sort.sorted(events.events.mapNotNull { it.onDate(day) }),
                             enabled = !events.busy, onOpen = onOpen, onToggle = events::complete,
-                            onMove = events::movePending, allowReorder = appearance.sort == TodaySort.MANUAL,
+                            onMove = events::moveEvent, allowReorder = appearance.sort == TodaySort.MANUAL,
                             onPin = events::pin, onDelete = events::delete,
                             wallpaperInk = ink,
-                            ongoingEvents = ongoing,
+                            ongoingEvents = appearance.sort.sorted(ongoing),
                         )
                     }
                     if (!events.loadingFailed) FloatingActionButton(onClick = onAdd,
