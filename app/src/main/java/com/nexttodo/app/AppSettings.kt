@@ -4,6 +4,8 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.AtomicFile
+import androidx.compose.runtime.mutableStateOf
+import androidx.core.content.edit
 import java.io.File
 import java.io.FileNotFoundException
 import java.security.KeyStore
@@ -21,6 +23,22 @@ internal enum class AppTheme(val label: String) {
 internal class AppSettings(context: Context) {
     private val preferences = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
     private val keyFile = AtomicFile(File(context.noBackupFilesDir, "deepseek-key"))
+    private val tomatoTabState = mutableStateOf(preferences.getBoolean("tomato_tab_enabled", false))
+    private val addTabState = mutableStateOf(preferences.getBoolean("add_tab_enabled", true))
+
+    var addTabEnabled: Boolean
+        get() = addTabState.value
+        set(value) {
+            preferences.edit { putBoolean("add_tab_enabled", value) }
+            addTabState.value = value
+        }
+
+    var tomatoTabEnabled: Boolean
+        get() = tomatoTabState.value
+        set(value) {
+            preferences.edit { putBoolean("tomato_tab_enabled", value) }
+            tomatoTabState.value = value
+        }
 
     var theme: AppTheme
         get() = AppTheme.entries.firstOrNull { it.name == preferences.getString("theme", null) }

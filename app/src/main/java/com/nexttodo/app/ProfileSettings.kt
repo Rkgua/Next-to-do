@@ -75,6 +75,7 @@ private enum class ProfileSettingDetail(val title: String, val hint: String) {
     PERMISSIONS("系统权限", "管理通知、精确闹钟和悬浮窗权限"),
     DEEPSEEK("DeepSeek", "管理图片识别与课表助手的 API 密钥"),
     UPDATE("版本更新", "检查新版本并查看发布记录"),
+    TABS("自定义 Tab 栏", "选择要显示在底栏的功能"),
 }
 
 @Composable
@@ -121,6 +122,8 @@ internal fun ProfileSettings(
             SettingsEntry(ProfileSettingDetail.LIVE, R.drawable.profile_settings_bell, if (liveEnabled) "已开启" else "未开启") { detailName = it.name }
         }
         SettingsGroup("自定义选项") {
+            SettingsEntry(ProfileSettingDetail.TABS) { detailName = it.name }
+            SettingsDivider(inset = 16.dp)
             SettingsToggle("隐藏非本周课程", "只显示所查看周的课程",
                 timetable.hideNonCurrentCourses, onCheckedChange = timetable::updateHideNonCurrentCourses)
             SettingsDivider(inset = 16.dp)
@@ -159,6 +162,13 @@ internal fun ProfileSettings(
                     ProfileSettingDetail.PERMISSIONS -> PermissionSettings(lifecycle)
                     ProfileSettingDetail.DEEPSEEK -> DeepSeekSettings(settings)
                     ProfileSettingDetail.UPDATE -> UpdateSettings(updates)
+                    ProfileSettingDetail.TABS -> {
+                        SettingsToggle("添加 Add", "在底栏显示添加入口", settings.addTabEnabled,
+                            onCheckedChange = { settings.addTabEnabled = it })
+                        SettingsDivider(inset = 16.dp)
+                        SettingsToggle("番茄 Tomato", "在底栏打开专注与统计",
+                            settings.tomatoTabEnabled, onCheckedChange = { settings.tomatoTabEnabled = it })
+                    }
                 }
             }
         }

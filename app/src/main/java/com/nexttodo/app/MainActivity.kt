@@ -188,6 +188,7 @@ private enum class Tab(val label: String, val title: String, val icon: Int) {
     DAILY("Today", "每日提醒", R.drawable.tab_today),
     SCHEDULE("Timetable", "课表速看", R.drawable.tab_timetable),
     ADD("Add", "添加事件", R.drawable.tab_add),
+    TOMATO("Tomato", "番茄空间", R.drawable.tab_tomato),
     PROFILE("My", "我的", R.drawable.tab_my),
 }
 
@@ -211,6 +212,10 @@ private fun NextToDo(
     onThemeChange: (AppTheme) -> Unit,
 ) {
     var tab by rememberSaveable { mutableStateOf(Tab.DAILY) }
+    val tomatoEnabled = settings.tomatoTabEnabled
+    val addEnabled = settings.addTabEnabled
+    var tomatoImmersive by remember { mutableStateOf(false) }
+    LaunchedEffect(tomatoEnabled) { if (!tomatoEnabled && tab == Tab.TOMATO) tab = Tab.PROFILE }
     var detailId by rememberSaveable { mutableStateOf<String?>(null) }
     var showingPomodoro by rememberSaveable { mutableStateOf(false) }
     var timetableTabsVisible by rememberSaveable { mutableStateOf(true) }
@@ -250,8 +255,8 @@ private fun NextToDo(
     LaunchedEffect(timerRequests) {
         if (timerRequests > 0) {
             detailId = null
-            showingPomodoro = true
-            tab = Tab.PROFILE
+            showingPomodoro = !tomatoEnabled
+            tab = if (tomatoEnabled) Tab.TOMATO else Tab.PROFILE
         }
     }
     LaunchedEffect(eventRequest) {
@@ -283,13 +288,15 @@ private fun NextToDo(
     Box(
         modifier = Modifier.fillMaxSize().background(
             when {
+                tomatoImmersive -> Color(0xFF142B30)
                 showingToday -> todayHeaderBackground
                 showingTimetable -> timetable.selected.style.headerBackgroundColor?.let(::Color) ?: timetableTop
                 else -> MaterialTheme.colorScheme.background
             }
         ).then(profileWallpaper)
             .windowInsetsPadding(
-                WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
+                if (tomatoImmersive) WindowInsets(0, 0, 0, 0)
+                else WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
             )
             .imePadding(),
     ) {
@@ -299,16 +306,16 @@ private fun NextToDo(
     }
     Scaffold(
         containerColor = Color.Transparent,
-        topBar = { key(timerRequests, timetableRequests, todayRequests, eventRequest?.first) { LiveStatusCapsule { target ->
+        topBar = { if (!tomatoImmersive) key(timerRequests, timetableRequests, todayRequests, eventRequest?.first) { LiveStatusCapsule { target ->
             detailId = null
-            if (target == "timer") { tab = Tab.PROFILE; showingPomodoro = true }
+            if (target == "timer") { tab = if (tomatoEnabled) Tab.TOMATO else Tab.PROFILE; showingPomodoro = !tomatoEnabled }
             else if (target == "courses") { courseJump++; tab = Tab.SCHEDULE }
             else { selectedDate = LocalDate.now().toString(); tab = Tab.DAILY }
         } } },
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            if (!keyboardVisible && !showingTimetable) {
-                BottomTabs(tab, dark) {
+            if (!keyboardVisible && !showingTimetable && !tomatoImmersive) {
+                BottomTabs(tab, dark, tomatoEnabled, addEnabled) {
                     detailId = null
                     showingPomodoro = false
                     tab = it
@@ -348,7 +355,7 @@ private fun NextToDo(
                     modifier = Modifier.align(Alignment.BottomCenter),
                     enter = slideInVertically(tween(280, easing = FastOutSlowInEasing)) { it } + fadeIn(tween(180)),
                     exit = slideOutVertically(tween(190, easing = FastOutLinearInEasing)) { it } + fadeOut(tween(130))) {
-                    BottomTabs(tab, dark) {
+                    BottomTabs(tab, dark, tomatoEnabled, addEnabled) {
                         detailId = null
                         showingPomodoro = false
                         tab = it
@@ -369,6 +376,13 @@ private fun NextToDo(
                     tab = Tab.ADD
                 },
             )
+            return@Scaffold
+        }
+        if (tab == Tab.TOMATO) {
+            Box(Modifier.fillMaxSize().then(if (tomatoImmersive) Modifier else Modifier.padding(padding))) {
+                PomodoroHub(lifecycle, hostActivity, contentInsets = WindowInsets(0, 0, 0, 0),
+                    onImmersiveChange = { tomatoImmersive = it }) { tab = Tab.DAILY }
+            }
             return@Scaffold
         }
         if (tab == Tab.PROFILE) {
@@ -406,7 +420,7 @@ private fun NextToDo(
                     onSave = model::save,
                     onReset = { model.clearDraft(selectedDay) },
                 )
-                Tab.PROFILE -> Unit
+                Tab.PROFILE, Tab.TOMATO -> Unit
             }
         }
     }
@@ -414,7 +428,7 @@ private fun NextToDo(
 }
 
 @Composable
-private fun BottomTabs(selected: Tab, dark: Boolean, onSelect: (Tab) -> Unit) {
+private fun BottomTabs(selected: Tab, dark: Boolean, tomatoEnabled: Boolean, addEnabled: Boolean, onSelect: (Tab) -> Unit) {
     val activeColor = MaterialTheme.colorScheme.primary
     val inactiveColor = if (dark) Color(0xFFADB9BF) else Color(0xFF707070)
     Surface(color = MaterialTheme.colorScheme.surface) {
@@ -424,7 +438,7 @@ private fun BottomTabs(selected: Tab, dark: Boolean, onSelect: (Tab) -> Unit) {
                 .selectableGroup()
                 .padding(horizontal = 8.dp)
         ) {
-            Tab.entries.forEach { tab ->
+            Tab.entries.filter { (it != Tab.TOMATO || tomatoEnabled) && (it != Tab.ADD || addEnabled) }.forEach { tab ->
                 val active = selected == tab
                 Box(
                     Modifier.weight(1f).height(68.dp)
