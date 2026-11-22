@@ -1,5 +1,6 @@
 package com.nexttodo.app
 
+import android.app.ActivityManager
 import android.app.AlarmManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -9,7 +10,9 @@ import android.content.Context
 import android.content.Intent
 import android.os.SystemClock
 import android.provider.Settings
+import java.util.UUID
 import androidx.core.app.NotificationCompat
+import androidx.core.content.edit
 
 internal enum class PomodoroPhase(val label: String, val finished: String) {
     FOCUS("专注", "专注结束，可以休息了"),
@@ -45,7 +48,7 @@ internal class PomodoroTimer(private val context: Context) {
         PendingIntent.FLAG_IMMUTABLE,
     )
 
-    fun refresh(): PomodoroState {
+    fun refresh(): PomodoroState = synchronized(timerLock) {
         val durations = PomodoroDurations(
             preferences.getInt("focus", 25),
             preferences.getInt("short", 5),
@@ -65,37 +68,108 @@ internal class PomodoroTimer(private val context: Context) {
             preferences.getLong("remaining", durations.milliseconds(phase))
         }
         val state = PomodoroState(phase, completed, remaining, running, durations)
-        if (!running || remaining > 0) return state
-
+        if (!running) return@synchronized state
+        if (remaining > 0) {
+            if (preferences.getString("trackingSegment", null) == null) beginTracking(state)
+            else if (preferences.getString("trackingKind", null) != trackingKind(phase).name) {
+                recordPart(state, false)
+                beginTracking(state)
+            }
+            return@synchronized state
+        }
+        recordPart(state, true)
         val advanced = nextPhase(state)
-        save(advanced)
+        save(advanced, clearSession = true)
         notifyFinished(phase)
-        return advanced
+        advanced
     }
 
-    fun restore(): PomodoroState {
-        val state = refresh()
-        if (state.running) save(state)
-        return state
+    fun restore(): PomodoroState = synchronized(timerLock) {
+        refresh().also { if (it.running) save(it) }
     }
 
-    fun setRunning(running: Boolean): PomodoroState = refresh().let { current ->
-        if (current.running == running) current else current.copy(running = running).also(::save)
-    }
-
-    fun reset(): PomodoroState = refresh().let { current ->
-        current.copy(remaining = current.total, running = false).also(::save)
-    }
-
-    fun skipBreak(): PomodoroState = refresh().let { current ->
-        if (current.phase == PomodoroPhase.FOCUS) current else nextPhase(current).also(::save)
-    }
-
-    fun setDurations(durations: PomodoroDurations): PomodoroState {
+    fun setRunning(running: Boolean): PomodoroState = synchronized(timerLock) {
         val current = refresh()
-        if (current.running) return current
-        return current.copy(durations = durations, remaining = durations.milliseconds(current.phase))
-            .also(::save)
+        if (current.running == running) current else {
+            if (!running) recordPart(current, false)
+            current.copy(running = running).also { save(it) }
+        }
+    }
+
+    fun reset(): PomodoroState = synchronized(timerLock) {
+        val current = refresh()
+        if (current.running) recordPart(current, false)
+        current.copy(remaining = current.total, running = false).also { save(it, clearSession = true) }
+    }
+
+    fun skipBreak(): PomodoroState = synchronized(timerLock) {
+        val current = refresh()
+        if (current.phase == PomodoroPhase.FOCUS) current else {
+            if (current.running) recordPart(current, false)
+            nextPhase(current).also { save(it, clearSession = true) }
+        }
+    }
+
+    fun setDurations(durations: PomodoroDurations): PomodoroState = synchronized(timerLock) {
+        require(listOf(durations.focus, durations.short, durations.long).all { it in 1..180 })
+        val current = refresh()
+        if (current.running) current else current.copy(durations = durations,
+            remaining = durations.milliseconds(current.phase)).also { save(it, clearSession = true) }
+    }
+
+    fun startFocus(minutes: Int): PomodoroState = startPhase(PomodoroPhase.FOCUS, minutes)
+    fun startRest(minutes: Int = 5): PomodoroState = startPhase(PomodoroPhase.SHORT_BREAK, minutes)
+
+    private fun startPhase(phase: PomodoroPhase, minutes: Int): PomodoroState = synchronized(timerLock) {
+        require(minutes in 1..180)
+        val current = refresh()
+        if (current.running) recordPart(current, false)
+        val durations = if (phase == PomodoroPhase.FOCUS) current.durations.copy(focus = minutes)
+            else current.durations.copy(short = minutes)
+        current.copy(phase = phase, durations = durations, remaining = minutes * 60_000L, running = true)
+            .also { save(it, clearSession = true) }
+    }
+
+    fun trackScreenPin(enabled: Boolean) = synchronized(timerLock) {
+        preferences.edit { putBoolean("recordPin", enabled) }
+        refresh()
+    }
+
+    fun liveSegment(): FocusSegment? = synchronized(timerLock) {
+        val state = refresh()
+        if (state.running) segment(state, false) else null
+    }
+
+    private fun trackingKind(phase: PomodoroPhase): FocusKind = when {
+        phase != PomodoroPhase.FOCUS -> FocusKind.REST
+        preferences.getBoolean("recordPin", false) && context.getSystemService(ActivityManager::class.java)
+            .lockTaskModeState != ActivityManager.LOCK_TASK_MODE_NONE -> FocusKind.LOCK
+        else -> FocusKind.FOCUS
+    }
+
+    private fun beginTracking(state: PomodoroState) {
+        preferences.edit {
+            putString("trackingSession", preferences.getString("trackingSession", null) ?: UUID.randomUUID().toString())
+            putString("trackingSegment", UUID.randomUUID().toString())
+            putString("trackingKind", trackingKind(state.phase).name)
+            putLong("trackingRemaining", state.remaining.coerceAtLeast(0))
+        }
+    }
+
+    private fun segment(state: PomodoroState, completed: Boolean): FocusSegment? {
+        val id = preferences.getString("trackingSegment", null) ?: return null
+        val session = preferences.getString("trackingSession", null) ?: return null
+        val checkpoint = preferences.getLong("trackingRemaining", state.remaining.coerceAtLeast(0))
+        val duration = (checkpoint - state.remaining.coerceAtLeast(0)).coerceIn(0, checkpoint.coerceAtLeast(0))
+        if (duration <= 0) return null
+        val end = System.currentTimeMillis() + state.remaining.coerceAtMost(0)
+        val kind = FocusKind.entries.firstOrNull { it.name == preferences.getString("trackingKind", null) }
+            ?: trackingKind(state.phase)
+        return FocusSegment(id, session, end - duration, end, kind, completed)
+    }
+
+    private fun recordPart(state: PomodoroState, completed: Boolean) {
+        segment(state, completed)?.let { FocusHistory.get(context).record(it) }
     }
 
     private fun nextPhase(current: PomodoroState): PomodoroState {
@@ -112,9 +186,19 @@ internal class PomodoroTimer(private val context: Context) {
         return PomodoroState(phase, completed, current.durations.milliseconds(phase), false, current.durations)
     }
 
-    private fun save(state: PomodoroState) {
+    private fun save(state: PomodoroState, clearSession: Boolean = false) {
         val elapsedDeadline = SystemClock.elapsedRealtime() + state.remaining
-        preferences.edit()
+        val editor = preferences.edit()
+        if (clearSession) editor.remove("trackingSession")
+        if (!state.running) editor.remove("trackingSegment")
+        else if (clearSession || preferences.getString("trackingSegment", null) == null) {
+            editor.putString("trackingSession", if (clearSession) UUID.randomUUID().toString()
+                else preferences.getString("trackingSession", null) ?: UUID.randomUUID().toString())
+                .putString("trackingSegment", UUID.randomUUID().toString())
+                .putString("trackingKind", trackingKind(state.phase).name)
+                .putLong("trackingRemaining", state.remaining)
+        }
+        editor
             .putString("phase", state.phase.name)
             .putInt("completed", state.completedFocus)
             .putInt("focus", state.durations.focus)
@@ -160,6 +244,7 @@ internal class PomodoroTimer(private val context: Context) {
     }
 
     companion object {
+        private val timerLock = Any()
         const val OPEN_POMODORO = "com.nexttodo.app.OPEN_POMODORO"
         private const val CHANNEL = "pomodoro"
     }

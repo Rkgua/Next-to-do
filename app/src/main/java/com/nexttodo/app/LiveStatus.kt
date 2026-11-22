@@ -141,7 +141,11 @@ internal object LiveStatus {
 }
 
 class NextTodoApplication : Application() {
-    override fun onCreate() { super.onCreate(); LiveStatus.initialize(this) }
+    override fun onCreate() {
+        super.onCreate()
+        LiveStatus.initialize(this)
+        Thread { FocusPlanScheduler.reschedule(this) }.start()
+    }
 }
 
 class LiveStatusReceiver : BroadcastReceiver() {

@@ -126,7 +126,7 @@ internal fun PomodoroScreen(lifecycle: Lifecycle, onBack: () -> Unit) {
 }
 
 @Composable
-private fun DurationSettings(
+internal fun DurationSettings(
     durations: PomodoroDurations,
     onDismiss: () -> Unit,
     onSave: (PomodoroDurations) -> Unit,
