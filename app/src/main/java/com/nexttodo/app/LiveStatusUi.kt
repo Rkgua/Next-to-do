@@ -54,7 +54,8 @@ internal fun LiveStatusSettings() {
                     modifier = Modifier.semantics { contentDescription = title })
             }
         }
-        Text("开启后，在通知栏和应用内查看实时状态。系统胶囊的展示由手机系统决定。", style = MaterialTheme.typography.bodySmall)
+        Text("开启后，在通知栏和应用内查看实时状态。系统胶囊的展示由手机系统决定。", style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (permissionDenied) Text("通知权限尚未开启，可在 My → 权限中设置。", style = MaterialTheme.typography.bodySmall)
         if (enabled && !context.getSystemService(NotificationManager::class.java).areNotificationsEnabled())
             Text("请在 My → 权限中开启通知。", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)

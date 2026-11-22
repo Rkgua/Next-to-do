@@ -1,6 +1,7 @@
 package com.nexttodo.app
 
 import android.content.Intent
+import android.app.Activity
 import android.os.Bundle
 import android.view.Window
 import androidx.activity.ComponentActivity
@@ -60,8 +61,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.paint
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
@@ -83,6 +89,7 @@ class MainActivity : ComponentActivity() {
         val model = ViewModelProvider(this)[EventViewModel::class.java]
         val timetable = ViewModelProvider(this)[TimetableViewModel::class.java]
         val updates = ViewModelProvider(this)[AppUpdateViewModel::class.java]
+        val profileDaily = ViewModelProvider(this)[ProfileDailyViewModel::class.java]
         val todayAppearance = ViewModelProvider(this)[TodayAppearanceViewModel::class.java]
         val settings = AppSettings(applicationContext)
         handleNavigationIntent(intent)
@@ -94,7 +101,7 @@ class MainActivity : ComponentActivity() {
                 AppTheme.DARK -> true
             }
             MaterialTheme(colorScheme = if (dark) DarkColors else LightColors) {
-                NextToDo(model, timetable, todayAppearance, updates, settings, lifecycle, theme, dark, window, timerRequests, timetableRequests, todayRequests, eventRequest) {
+                NextToDo(model, timetable, todayAppearance, updates, profileDaily, settings, lifecycle, theme, dark, window, timerRequests, timetableRequests, todayRequests, eventRequest, this@MainActivity) {
                     settings.theme = it
                     theme = it
                 }
@@ -190,6 +197,7 @@ private fun NextToDo(
     timetable: TimetableViewModel,
     todayAppearance: TodayAppearanceViewModel,
     updates: AppUpdateViewModel,
+    profileDaily: ProfileDailyViewModel,
     settings: AppSettings,
     lifecycle: Lifecycle,
     theme: AppTheme,
@@ -199,6 +207,7 @@ private fun NextToDo(
     timetableRequests: Int,
     todayRequests: Int,
     eventRequest: Pair<Int, String>?,
+    hostActivity: Activity,
     onThemeChange: (AppTheme) -> Unit,
 ) {
     var tab by rememberSaveable { mutableStateOf(Tab.DAILY) }
@@ -218,6 +227,7 @@ private fun NextToDo(
         WindowCompat.getInsetsController(window, window.decorView).apply {
             isAppearanceLightStatusBars = when {
                 showingToday -> false
+                tab == Tab.PROFILE -> false
                 showingTimetable -> timetable.selected.style.headerBackgroundColor?.let { Color(it).luminance() > .5f } ?: !dark
                 else -> !dark
             }
@@ -262,6 +272,14 @@ private fun NextToDo(
         }
     }
 
+    val profileWallpaper = if (tab == Tab.PROFILE) {
+        val photo = profileDaily.bitmap
+        val painter = if (photo != null) remember(photo) { BitmapPainter(photo.asImageBitmap()) }
+            else painterResource(R.drawable.timetable_aurora)
+        Modifier.paint(painter, sizeToIntrinsics = false, contentScale = ContentScale.Crop)
+            .background(Brush.verticalGradient(listOf(Color(0xFF071E24).copy(alpha = .46f),
+                Color(0xFF091D24).copy(alpha = .32f), Color(0xFF08191F).copy(alpha = .90f))))
+    } else Modifier
     Box(
         modifier = Modifier.fillMaxSize().background(
             when {
@@ -269,7 +287,7 @@ private fun NextToDo(
                 showingTimetable -> timetable.selected.style.headerBackgroundColor?.let(::Color) ?: timetableTop
                 else -> MaterialTheme.colorScheme.background
             }
-        )
+        ).then(profileWallpaper)
             .windowInsetsPadding(
                 WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
             )
@@ -353,6 +371,13 @@ private fun NextToDo(
             )
             return@Scaffold
         }
+        if (tab == Tab.PROFILE) {
+            Box(Modifier.fillMaxSize().padding(padding)) {
+                ProfileMyScreen(settings, lifecycle, theme, updates, onThemeChange, todayAppearance,
+                    timetable, profileDaily, showingPomodoro, { showingPomodoro = it }, hostActivity)
+            }
+            return@Scaffold
+        }
         Column(
             Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp),
         ) {
@@ -360,7 +385,6 @@ private fun NextToDo(
             Text(
                 when {
                     tab == Tab.ADD && model.events.any { it.id == model.draft.id } -> "编辑事件"
-                    tab == Tab.PROFILE && showingPomodoro -> "番茄钟"
                     else -> tab.title
                 },
                 style = MaterialTheme.typography.headlineMedium,
@@ -382,12 +406,7 @@ private fun NextToDo(
                     onSave = model::save,
                     onReset = { model.clearDraft(selectedDay) },
                 )
-                Tab.PROFILE -> if (showingPomodoro) {
-                    PomodoroScreen(lifecycle) { showingPomodoro = false }
-                } else {
-                    ProfileSettings(settings, lifecycle, theme, updates, onThemeChange,
-                        onOpenPomodoro = { showingPomodoro = true }, todayAppearance = todayAppearance, timetable = timetable)
-                }
+                Tab.PROFILE -> Unit
             }
         }
     }
