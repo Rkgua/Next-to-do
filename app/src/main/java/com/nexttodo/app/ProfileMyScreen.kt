@@ -192,7 +192,8 @@ internal fun ProfileMyScreen(
                 endY = with(density) { transition.toPx() }.coerceAtLeast(1f)))) {
             ProfileSettings(settings, lifecycle, theme, updates, onThemeChange,
                 todayAppearance = todayAppearance, timetable = timetable,
-                modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 8.dp), bottomPadding = 12.dp,
+                modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 8.dp)
+                    .profileSettingsEdge(), bottomPadding = 12.dp,
                 scrollState = settingsScroll)
         }
         if (daily.loading) LinearProgressIndicator(Modifier.align(Alignment.TopCenter).fillMaxWidth().height(2.dp),
