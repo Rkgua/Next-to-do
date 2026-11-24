@@ -21,7 +21,7 @@ Next to do 是一个 Android 待办与课表管理应用。可以按日期查看
 
 启动应用时会检查 GitHub 最新正式版，也可在 **My → 版本更新 → 检查更新** 手动检查。发现新版后询问是否更新，确认后打开对应版本的 GitHub 发布页下载 APK。
 
-发布新版时，请同步提高 `versionCode` 和 `versionName`，并创建版本标签与之对应的 GitHub 正式 Release（例如 `v1.0.4`）。草稿和预发布版本不参与更新提示。
+发布新版时，请同步提高 `versionCode` 和 `versionName`，并创建版本标签与之对应的 GitHub 正式 Release（例如 `v1.0.6`）。草稿和预发布版本不参与更新提示。
 
 ## 事件与实时提醒（1.0.4）
 
