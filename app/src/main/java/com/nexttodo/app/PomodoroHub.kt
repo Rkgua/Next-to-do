@@ -7,6 +7,10 @@ import android.provider.Settings
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -19,6 +23,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -28,6 +33,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
@@ -137,17 +143,7 @@ internal fun PomodoroHub(lifecycle: Lifecycle, activity: Activity,
                 Text("番茄空间", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                 TextButton(onClick = { durations = true }, enabled = !state.running) { Text("时长") }
             }
-            Row(Modifier.padding(horizontal = 20.dp, vertical = 4.dp).fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(24.dp))
-                .selectableGroup().padding(4.dp)) {
-                listOf("专注", "统计").forEachIndexed { index, label ->
-                    Box(Modifier.weight(1f).height(42.dp).background(if (tab == index) MaterialTheme.colorScheme.surface else Color.Transparent,
-                        RoundedCornerShape(20.dp)).selectable(tab == index, role = Role.Tab, onClick = { tab = index }), contentAlignment = Alignment.Center) {
-                        Text(label, fontWeight = if (tab == index) FontWeight.SemiBold else FontWeight.Normal,
-                            color = if (tab == index) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
+            PomodoroSectionTabs(tab) { tab = it }
             if (tab == 0) Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 FocusSummaryCard(dailyFocus(history.records, java.time.LocalDate.now()), failed = history.failed, loading = history.loading)
                 Box(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(Color(0xFFC96B60), Color(0xFFAD4E47))), RoundedCornerShape(26.dp))) {
@@ -194,6 +190,37 @@ internal fun PomodoroHub(lifecycle: Lifecycle, activity: Activity,
         text = { Text("当前计时会结束，已经投入的时间会保留在统计中。") },
         confirmButton = { TextButton(onClick = { update { timer.startRest() }; confirmRest = false }) { Text("开始小憩") } },
         dismissButton = { TextButton(onClick = { confirmRest = false }) { Text("继续当前计时") } })
+}
+
+@Composable
+private fun PomodoroSectionTabs(selected: Int, onSelect: (Int) -> Unit) {
+    Box(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp), contentAlignment = Alignment.Center) {
+        BoxWithConstraints(Modifier.widthIn(max = 280.dp).fillMaxWidth().height(44.dp)
+            .clip(RoundedCornerShape(22.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh)) {
+            val tabWidth = (maxWidth - 6.dp) / 2
+            val indicatorLeft by animateDpAsState(tabWidth * selected,
+                spring(dampingRatio = 1f, stiffness = 500f), label = "focus tab indicator")
+            Box(Modifier.fillMaxSize().padding(3.dp)) {
+                Surface(Modifier.offset { IntOffset(indicatorLeft.roundToPx(), 0) }.width(tabWidth).fillMaxHeight(),
+                    shape = RoundedCornerShape(19.dp), color = MaterialTheme.colorScheme.surface,
+                    shadowElevation = 1.dp) {}
+                Row(Modifier.fillMaxSize().selectableGroup()) {
+                    listOf("专注", "统计").forEachIndexed { index, label ->
+                        val active = selected == index
+                        val color by animateColorAsState(if (active) MaterialTheme.colorScheme.onSurface
+                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .8f),
+                            tween(160), label = "focus tab text")
+                        Box(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(19.dp)).selectable(active,
+                            interactionSource = null, indication = null, role = Role.Tab, onClick = { onSelect(index) }),
+                            contentAlignment = Alignment.Center) {
+                            Text(label, color = color, fontSize = 15.sp,
+                                fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal)
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
