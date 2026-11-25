@@ -117,7 +117,18 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        AlarmAlerts.resumed(this)
         LiveStatus.request(this)
+        Thread {
+            runCatching {
+                EventStore(applicationContext).use { EventReminders(applicationContext).restore(it.readAll()) }
+            }.onFailure { android.util.Log.e("NextToDo", "Unable to restore event reminders", it) }
+        }.start()
+    }
+
+    override fun onPause() {
+        AlarmAlerts.paused(this)
+        super.onPause()
     }
 
     private fun handleNavigationIntent(intent: Intent) {

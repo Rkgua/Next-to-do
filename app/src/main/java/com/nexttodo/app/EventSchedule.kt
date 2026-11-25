@@ -87,6 +87,20 @@ internal fun Event.nextReminderAfter(now: LocalDateTime): LocalDateTime? {
     return null
 }
 
+// Recover a recently missed alarm after a restart/permission change without ringing old events.
+internal fun Event.reminderToSchedule(now: LocalDateTime, delivered: String?): LocalDateTime? {
+    if (reminderEnabled && time.isNotBlank()) {
+        val clock = LocalDateTime.parse(time).toLocalTime()
+        for (day in listOf(now.toLocalDate(), now.toLocalDate().minusDays(1))) {
+            val due = day.atTime(clock)
+            val occurrence = onDate(day, now.toLocalDate())
+            if (occurrence?.occurrenceDate == day && !occurrence.completed &&
+                due <= now && due >= now.minusMinutes(15) && due.toString() != delivered) return due
+        }
+    }
+    return nextReminderAfter(now)
+}
+
 internal fun periodEvents(events: List<Event>, start: LocalDate, end: LocalDate): List<Event> =
     (0..ChronoUnit.DAYS.between(start, end)).flatMap { offset -> events.mapNotNull { it.onDate(start.plusDays(offset)) } }
         .distinctBy { it.id to it.occurrenceDate }

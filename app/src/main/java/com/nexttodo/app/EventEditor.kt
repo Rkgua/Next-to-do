@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import java.time.LocalDateTime
 import java.time.LocalDate
@@ -86,24 +87,31 @@ internal fun EventEditor(
             onChange(event.copy(description = it))
         }
         EventScheduleEditor(event, enabled, onChange)
-        event.timeInMillis()?.let { time ->
-            val future = time > System.currentTimeMillis()
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(if (event.isDuration) "开始时提醒" else "到点提醒", Modifier.weight(1f))
-                Switch(
-                    checked = event.reminderEnabled,
-                    onCheckedChange = { onChange(event.copy(reminderEnabled = it)) },
-                    enabled = enabled && (future || event.reminderEnabled || event.repetition != EventRepeat.NONE),
-                )
-            }
-            val notifications = context.getSystemService(NotificationManager::class.java).areNotificationsEnabled()
-            val hint = when {
-                !future && event.repetition == EventRepeat.NONE -> if (event.isDuration) "开始时间已过，无法设置开始提醒" else "事件时间已过"
-                event.reminderEnabled && !notifications -> "请在「My → 权限」开启通知"
-                else -> null
-            }
-            hint?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        val reminderTime = event.timeInMillis()
+        val future = reminderTime != null && reminderTime > System.currentTimeMillis()
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(if (event.isDuration) "开始时提醒" else "到点提醒", Modifier.weight(1f))
+            Switch(
+                checked = event.reminderEnabled,
+                onCheckedChange = { onChange(event.copy(reminderEnabled = it)) },
+                enabled = enabled && reminderTime != null &&
+                    (future || event.reminderEnabled || event.repetition != EventRepeat.NONE),
+                modifier = Modifier.testTag("event-reminder-switch"),
+            )
         }
+        val notifications = context.getSystemService(NotificationManager::class.java).areNotificationsEnabled()
+        val hint = when {
+            reminderTime == null -> "请先设置事件时间，再开启到点提醒"
+            !future && event.repetition == EventRepeat.NONE -> if (event.isDuration) "开始时间已过，无法设置开始提醒" else "事件时间已过"
+            event.reminderEnabled && !notifications -> "请在「My → 系统权限」开启通知"
+            event.reminderEnabled && android.os.Build.VERSION.SDK_INT >= 31 &&
+                !context.getSystemService(android.app.AlarmManager::class.java).canScheduleExactAlarms() ->
+                "未开启精确闹钟，休眠时提醒可能延迟；请在「My → 系统权限」开启"
+            event.reminderEnabled && !AlarmAlerts.fullScreenAllowed(context) ->
+                "锁屏弹出尚未允许；请在「My → 系统权限」开启锁屏全屏提醒"
+            else -> null
+        }
+        hint?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         SystemAlarmButton(event, enabled)
         AttachmentField("原图", event.originalImage, FieldType.IMAGE, enabled) {
             onChange(event.copy(originalImage = it))

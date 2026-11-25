@@ -1,13 +1,10 @@
 package com.nexttodo.app
 
 import android.app.AlarmManager
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import androidx.core.app.NotificationCompat
 import androidx.core.content.edit
 import androidx.core.net.toUri
 import java.time.ZonedDateTime
@@ -41,7 +38,7 @@ internal object FocusPlanScheduler {
             val operation = operation(context, plan.id)
             alarms.cancel(operation)
             nextFocusPlan(plan, ZonedDateTime.now())?.let {
-                scheduleWhileIdle(alarms, AlarmManager.RTC_WAKEUP, it.toInstant().toEpochMilli(), operation)
+                scheduleUserAlarm(context, alarms, AlarmManager.RTC_WAKEUP, it.toInstant().toEpochMilli(), operation)
             }
         }
     }
@@ -58,15 +55,8 @@ internal object FocusPlanScheduler {
         if (!busy) timer.startFocus(plan.duration)
         reschedule(context)
         LiveStatus.request(context)
-        val manager = context.getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(NotificationChannel("focus_plans", "专注计划提醒", NotificationManager.IMPORTANCE_HIGH))
-        val open = PendingIntent.getActivity(context, id.hashCode(), Intent(context, MainActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            .putExtra(PomodoroTimer.OPEN_POMODORO, true), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val notification = NotificationCompat.Builder(context, "focus_plans").setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-            .setContentTitle(plan.title).setContentText(if (busy) "计划时间到了，当前计时继续" else "${plan.duration} 分钟专注已开始")
-            .setContentIntent(open).setAutoCancel(true).build()
-        try { manager.notify(id.hashCode(), notification) } catch (_: SecurityException) { }
+        AlarmAlerts.show(context, AlarmKind.PLAN, "plan:${plan.id}", plan.title,
+            if (busy) "计划时间到了，当前计时继续" else "${plan.duration} 分钟专注已开始")
     }
 }
 

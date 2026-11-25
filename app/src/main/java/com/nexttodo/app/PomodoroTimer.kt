@@ -2,8 +2,6 @@ package com.nexttodo.app
 
 import android.app.ActivityManager
 import android.app.AlarmManager
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -11,7 +9,7 @@ import android.content.Intent
 import android.os.SystemClock
 import android.provider.Settings
 import java.util.UUID
-import androidx.core.app.NotificationCompat
+import java.util.concurrent.Executors
 import androidx.core.content.edit
 
 internal enum class PomodoroPhase(val label: String, val finished: String) {
@@ -41,7 +39,6 @@ internal data class PomodoroState(
 internal class PomodoroTimer(private val context: Context) {
     private val preferences = context.getSharedPreferences("pomodoro", Context.MODE_PRIVATE)
     private val alarms = context.getSystemService(AlarmManager::class.java)
-    private val notificationManager = context.getSystemService(NotificationManager::class.java)
     private val bootCount = Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT, -1)
     private val alarmIntent = PendingIntent.getBroadcast(
         context, 0, Intent(context, PomodoroAlarmReceiver::class.java),
@@ -213,46 +210,33 @@ internal class PomodoroTimer(private val context: Context) {
             alarms.cancel(alarmIntent)
             return
         }
-        scheduleWhileIdle(alarms, AlarmManager.ELAPSED_REALTIME_WAKEUP, elapsedDeadline, alarmIntent)
+        scheduleUserAlarm(context, alarms, AlarmManager.ELAPSED_REALTIME_WAKEUP, elapsedDeadline, alarmIntent)
     }
 
     private fun notifyFinished(phase: PomodoroPhase) {
-        if (!notificationManager.areNotificationsEnabled()) return
-        notificationManager.createNotificationChannel(
-            NotificationChannel(CHANNEL, "番茄钟结束提醒", NotificationManager.IMPORTANCE_HIGH)
-        )
-        val open = PendingIntent.getActivity(
-            context, 0,
-            Intent(context, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                .putExtra(OPEN_POMODORO, true),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-        val notification = NotificationCompat.Builder(context, CHANNEL)
-            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-            .setContentTitle("番茄钟")
-            .setContentText(phase.finished)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setContentIntent(open)
-            .setAutoCancel(true)
-            .build()
-        try {
-            notificationManager.notify(1, notification)
-        } catch (_: SecurityException) {
-            // The notification permission can be revoked after the status check.
-        }
+        AlarmAlerts.show(context, AlarmKind.TIMER, "pomodoro-finished", "番茄钟", phase.finished)
     }
 
     companion object {
         private val timerLock = Any()
         const val OPEN_POMODORO = "com.nexttodo.app.OPEN_POMODORO"
-        private const val CHANNEL = "pomodoro"
     }
 }
 
 class PomodoroAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        val timer = PomodoroTimer(context)
-        if (intent.action == null) timer.refresh() else timer.restore()
+        val pending = goAsync()
+        executor.execute {
+            try {
+                val timer = PomodoroTimer(context)
+                if (intent.action == null) timer.refresh() else timer.restore()
+            } catch (exception: Exception) {
+                android.util.Log.e("NextToDo", "Unable to process timer alarm", exception)
+            } finally { pending.finish() }
+        }
+    }
+
+    private companion object {
+        val executor = Executors.newSingleThreadExecutor()
     }
 }

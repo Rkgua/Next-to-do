@@ -2,7 +2,6 @@ package com.nexttodo.app
 
 import android.app.AlarmManager
 import android.app.NotificationManager
-import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -329,6 +328,8 @@ private data class Permissions(
     val notifications: Boolean,
     val exactAlarms: Boolean,
     val overlay: Boolean,
+    val fullScreen: Boolean,
+    val background: Boolean,
 )
 
 private fun readPermissions(context: Context) = Permissions(
@@ -336,6 +337,8 @@ private fun readPermissions(context: Context) = Permissions(
     exactAlarms = Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
         context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms(),
     overlay = Settings.canDrawOverlays(context),
+    fullScreen = AlarmAlerts.fullScreenAllowed(context),
+    background = context.getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName),
 )
 
 @Composable
@@ -343,9 +346,13 @@ private fun PermissionSettings(lifecycle: Lifecycle) {
     val context = LocalContext.current
     val appPackage = Uri.fromParts("package", context.packageName, null)
     var permissions by remember(context) { mutableStateOf(readPermissions(context)) }
+    var permissionRevision by remember { mutableIntStateOf(0) }
     DisposableEffect(lifecycle, context) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) permissions = readPermissions(context)
+            if (event == Lifecycle.Event.ON_RESUME) {
+                permissions = readPermissions(context)
+                permissionRevision++
+            }
         }
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
@@ -356,38 +363,72 @@ private fun PermissionSettings(lifecycle: Lifecycle) {
             context,
             Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
                 .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
-            appPackage,
         )
     }
     HorizontalDivider()
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         PermissionRow("精确闹钟", permissions.exactAlarms) {
-            openSettings(context, Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, appPackage), appPackage)
+            openSettings(context, Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, appPackage))
         }
     } else {
         PermissionRow("精确闹钟", permissions.exactAlarms, onManage = null)
     }
     HorizontalDivider()
+    PermissionRow("系统电池优化豁免", permissions.background,
+        status = if (permissions.background) "已豁免，厂商后台开关仍需检查" else "未豁免，休眠时可能受限") {
+        openSettings(context, Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, appPackage))
+    }
+    ReminderDeviceSettings()
+    HorizontalDivider()
+    if (Build.VERSION.SDK_INT >= 34) {
+        PermissionRow("锁屏全屏提醒", permissions.fullScreen) {
+            openSettings(context, Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, appPackage))
+        }
+        HorizontalDivider()
+    }
+    AlarmKind.entries.forEach { kind ->
+        val channel = remember(permissionRevision, kind) { AlarmAlerts.channel(context, kind) }
+        val audible = channel.importance >= NotificationManager.IMPORTANCE_HIGH && channel.sound != null
+        PermissionRow(kind.label, audible, status = when {
+            channel.importance == NotificationManager.IMPORTANCE_NONE -> "此类提醒已关闭"
+            channel.sound == null -> "此类提醒已静音"
+            channel.importance < NotificationManager.IMPORTANCE_HIGH -> "请设为高重要性并允许弹出"
+            else -> "已开启响铃，请同时检查闹钟音量"
+        }) {
+            openSettings(context, Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                .putExtra(Settings.EXTRA_CHANNEL_ID, kind.channel))
+        }
+        HorizontalDivider()
+    }
+    Text("通知总开关、各类提醒通道、精确闹钟和锁屏全屏提醒分别受系统控制。响铃使用闹钟音量，最长一分钟；勿扰模式和厂商后台限制仍可能影响提醒。",
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val alarmVolume = context.getSystemService(android.media.AudioManager::class.java)
+        .getStreamVolume(android.media.AudioManager.STREAM_ALARM)
+    TextButton(onClick = { openSettings(context, Intent(Settings.ACTION_SOUND_SETTINGS)) }) {
+        Text(if (alarmVolume == 0) "闹钟音量为 0，点击调整" else "闹钟音量：$alarmVolume，点击调整")
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        TextButton(onClick = { scheduleReminderTest(context, AlarmKind.EVENT) }) { Text("5秒后测试事件提醒") }
+        TextButton(onClick = { scheduleReminderTest(context, AlarmKind.TIMER) }) { Text("5秒后测试专注提醒") }
+    }
+    HorizontalDivider()
     PermissionRow("悬浮窗", permissions.overlay) {
-        openSettings(context, Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, appPackage), appPackage)
+        openSettings(context, Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, appPackage))
     }
 }
 
-private fun openSettings(context: Context, intent: Intent, appPackage: Uri) {
-    try {
-        context.startActivity(intent)
-    } catch (_: ActivityNotFoundException) {
-        context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, appPackage))
-    }
+private fun openSettings(context: Context, intent: Intent) {
+    openReminderSettings(context, listOf(intent))
 }
 
 @Composable
-private fun PermissionRow(label: String, granted: Boolean, onManage: (() -> Unit)?) {
+private fun PermissionRow(label: String, granted: Boolean, status: String? = null, onManage: (() -> Unit)?) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.weight(1f)) {
             Text(label, style = MaterialTheme.typography.bodyLarge)
             Text(
-                if (granted) "已允许" else "未允许",
+                status ?: if (granted) "已允许" else "未允许",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
