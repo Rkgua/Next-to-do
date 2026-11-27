@@ -142,6 +142,9 @@ internal fun EventEditor(
                     ChildEventsEditor(event, children, enabled, onChildrenChange)
                 }
             }
+            EditorSection("添加标签", R.drawable.editor_tags) {
+                EventTagEditor(event.tags, enabled) { onChange(event.copy(tags = it)) }
+            }
             EditorSection("时间与提醒", R.drawable.editor_calendar) {
                 EventScheduleEditor(event, enabled, onChange)
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
