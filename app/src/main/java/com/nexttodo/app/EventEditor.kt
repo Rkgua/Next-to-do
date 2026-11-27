@@ -7,6 +7,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,10 +21,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -32,6 +43,10 @@ import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -53,99 +68,158 @@ internal fun EventEditor(
     val recognitionPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         uri?.let { onRecognize(selectedAttachment(context, it, "原图")) }
     }
-    Column(
-        Modifier.verticalScroll(rememberScrollState()).padding(bottom = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        OutlinedButton(
-            onClick = {
-                recognitionPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-            },
-            enabled = enabled,
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text(if (recognizing) "正在识别图片…" else "AI 识别图片") }
-        Text(
-            "识别时会将所选图片发送至 DeepSeek，结果可在下方修改。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+    Column(Modifier.fillMaxSize()) {
+        Column(
+            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            EventType.entries.forEach { type ->
-                FilterChip(
-                    selected = event.type == type,
-                    onClick = { onChange(event.withType(type)) },
+            Surface(
+                onClick = {
+                    recognitionPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                },
+                enabled = enabled,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
+            ) {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)) {
+                        Icon(painterResource(R.drawable.editor_sparkles), null,
+                            Modifier.padding(10.dp).size(22.dp), tint = MaterialTheme.colorScheme.primary)
+                    }
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(if (recognizing) "正在识别图片…" else "AI 识别图片",
+                            style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        Text("所选图片发送至 DeepSeek，识别后可修改", style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f))
+                    }
+                    Icon(painterResource(R.drawable.settings_chevron), null, Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.primary)
+                }
+            }
+            EditorSection("事件内容", R.drawable.tab_add) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    EventType.entries.forEach { type ->
+                        FilterChip(
+                            selected = event.type == type,
+                            onClick = { onChange(event.withType(type)) },
+                            enabled = enabled,
+                            label = { Text(type.label, modifier = Modifier.padding(horizontal = 4.dp)) },
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(0.dp, Color.Transparent),
+                            colors = FilterChipDefaults.filterChipColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                            ),
+                        )
+                    }
+                }
+                EditorText("事件名称", event.title, enabled) { onChange(event.copy(title = it)) }
+                EditorText("描述（选填）", event.description, enabled, singleLine = false) {
+                    onChange(event.copy(description = it))
+                }
+                event.fields.forEachIndexed { index, field ->
+                    if (field.presetFor != null) key(event.id, field.id, field.type) {
+                        FieldEditor(field, enabled, true, { updated ->
+                            onChange(event.copy(fields = event.fields.toMutableList().also { it[index] = updated }))
+                        }, {})
+                    }
+                }
+            }
+            EditorSection("时间与提醒", R.drawable.editor_calendar) {
+                EventScheduleEditor(event, enabled, onChange)
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
+                val reminderTime = event.timeInMillis()
+                val future = reminderTime != null && reminderTime > System.currentTimeMillis()
+                val notifications = context.getSystemService(NotificationManager::class.java).areNotificationsEnabled()
+                val hint = when {
+                    reminderTime == null -> "请先设置事件时间，再开启到点提醒"
+                    !future && event.repetition == EventRepeat.NONE -> if (event.isDuration) "开始时间已过，无法设置开始提醒" else "事件时间已过"
+                    event.reminderEnabled && !notifications -> "请在「My → 系统权限」开启通知"
+                    event.reminderEnabled && android.os.Build.VERSION.SDK_INT >= 31 &&
+                        !context.getSystemService(android.app.AlarmManager::class.java).canScheduleExactAlarms() ->
+                        "未开启精确闹钟，休眠时提醒可能延迟；请在「My → 系统权限」开启"
+                    event.reminderEnabled && !AlarmAlerts.fullScreenAllowed(context) ->
+                        "锁屏弹出尚未允许；请在「My → 系统权限」开启锁屏全屏提醒"
+                    else -> null
+                }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(if (event.isDuration) "开始时提醒" else "到点提醒", style = MaterialTheme.typography.bodyLarge)
+                        Text(hint ?: if (event.reminderEnabled) "在设定时间响铃提醒" else "开启后不错过重要安排",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(
+                        checked = event.reminderEnabled,
+                        onCheckedChange = { onChange(event.copy(reminderEnabled = it)) },
+                        enabled = enabled && reminderTime != null &&
+                            (future || event.reminderEnabled || event.repetition != EventRepeat.NONE),
+                        modifier = Modifier.testTag("event-reminder-switch"),
+                    )
+                }
+                SystemAlarmButton(event, enabled)
+            }
+            EditorSection("附件与属性", R.drawable.editor_attachment) {
+                Text("补充图片、文件或其他信息（选填）", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                AttachmentField("原图", event.originalImage, FieldType.IMAGE, enabled) {
+                    onChange(event.copy(originalImage = it))
+                }
+                event.fields.forEachIndexed { index, field ->
+                    if (field.presetFor == null) key(event.id, field.id, field.type) {
+                        FieldEditor(
+                            field = field,
+                            enabled = enabled,
+                            preset = false,
+                            onChange = { updated ->
+                                val fields = event.fields.toMutableList()
+                                fields[index] = updated
+                                onChange(event.copy(fields = fields))
+                            },
+                            onRemove = {
+                                val fields = event.fields.toMutableList()
+                                fields.removeAt(index)
+                                onChange(event.copy(fields = fields))
+                            },
+                        )
+                    }
+                }
+                OutlinedButton(
+                    onClick = { onChange(event.copy(fields = event.fields + EventField())) },
                     enabled = enabled,
-                    label = { Text(type.label) },
-                )
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                ) { Text("＋ 添加属性") }
             }
         }
-        EditorText("事件名称", event.title, enabled) { onChange(event.copy(title = it)) }
-        EditorText("描述", event.description, enabled, singleLine = false) {
-            onChange(event.copy(description = it))
-        }
-        EventScheduleEditor(event, enabled, onChange)
-        val reminderTime = event.timeInMillis()
-        val future = reminderTime != null && reminderTime > System.currentTimeMillis()
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(if (event.isDuration) "开始时提醒" else "到点提醒", Modifier.weight(1f))
-            Switch(
-                checked = event.reminderEnabled,
-                onCheckedChange = { onChange(event.copy(reminderEnabled = it)) },
-                enabled = enabled && reminderTime != null &&
-                    (future || event.reminderEnabled || event.repetition != EventRepeat.NONE),
-                modifier = Modifier.testTag("event-reminder-switch"),
-            )
-        }
-        val notifications = context.getSystemService(NotificationManager::class.java).areNotificationsEnabled()
-        val hint = when {
-            reminderTime == null -> "请先设置事件时间，再开启到点提醒"
-            !future && event.repetition == EventRepeat.NONE -> if (event.isDuration) "开始时间已过，无法设置开始提醒" else "事件时间已过"
-            event.reminderEnabled && !notifications -> "请在「My → 系统权限」开启通知"
-            event.reminderEnabled && android.os.Build.VERSION.SDK_INT >= 31 &&
-                !context.getSystemService(android.app.AlarmManager::class.java).canScheduleExactAlarms() ->
-                "未开启精确闹钟，休眠时提醒可能延迟；请在「My → 系统权限」开启"
-            event.reminderEnabled && !AlarmAlerts.fullScreenAllowed(context) ->
-                "锁屏弹出尚未允许；请在「My → 系统权限」开启锁屏全屏提醒"
-            else -> null
-        }
-        hint?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-        SystemAlarmButton(event, enabled)
-        AttachmentField("原图", event.originalImage, FieldType.IMAGE, enabled) {
-            onChange(event.copy(originalImage = it))
-        }
-        event.fields.forEachIndexed { index, field ->
-            key(event.id, field.id, field.type) {
-                val preset = field.presetFor != null
-                FieldEditor(
-                    field = field,
-                    enabled = enabled,
-                    preset = preset,
-                    onChange = { updated ->
-                        val fields = event.fields.toMutableList()
-                        fields[index] = updated
-                        onChange(event.copy(fields = fields))
-                    },
-                    onRemove = {
-                        val fields = event.fields.toMutableList()
-                        fields.removeAt(index)
-                        onChange(event.copy(fields = fields))
-                    },
-                )
+        Surface(color = MaterialTheme.colorScheme.background) {
+            Row(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onReset, enabled = enabled) { Text("清空") }
+                Button(onClick = onSave, enabled = enabled,
+                    modifier = Modifier.weight(1f).height(52.dp), shape = RoundedCornerShape(16.dp),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)) {
+                    Text("保存事件", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                }
             }
         }
-        OutlinedButton(
-            onClick = { onChange(event.copy(fields = event.fields + EventField())) },
-            enabled = enabled,
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text("+ 添加属性") }
-        Button(onClick = onSave, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
-            Text("保存事件")
-        }
-        TextButton(onClick = onReset, enabled = enabled) {
-            Text("新建空白事件")
+    }
+}
+
+@Composable
+private fun EditorSection(title: String, icon: Int, content: @Composable ColumnScope.() -> Unit) {
+    Surface(shape = RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surface) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(painterResource(icon), null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            }
+            content()
         }
     }
 }
@@ -210,7 +284,7 @@ private fun EditorText(
     singleLine: Boolean = true,
     onChange: (String) -> Unit,
 ) {
-    OutlinedTextField(
+    TextField(
         value = value,
         onValueChange = onChange,
         label = { Text(label) },
@@ -218,6 +292,14 @@ private fun EditorText(
         enabled = enabled,
         singleLine = singleLine,
         minLines = if (singleLine) 1 else 2,
+        shape = RoundedCornerShape(14.dp),
+        colors = TextFieldDefaults.colors(
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+            unfocusedIndicatorColor = Color.Transparent,
+            focusedIndicatorColor = Color.Transparent,
+            disabledIndicatorColor = Color.Transparent,
+        ),
     )
 }
 
@@ -288,6 +370,12 @@ internal fun TimeField(
             onClick = { pickEventDate(context, dialogTheme, value, initialDate) { pickingTime = it } },
             enabled = enabled,
             modifier = Modifier.weight(1f),
+            shape = RoundedCornerShape(14.dp),
+            border = null,
+            colors = ButtonDefaults.outlinedButtonColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                contentColor = MaterialTheme.colorScheme.onSurface,
+            ),
         ) {
             Text(
                 when {
