@@ -145,7 +145,6 @@ internal fun PomodoroHub(lifecycle: Lifecycle, activity: Activity,
             }
             PomodoroSectionTabs(tab) { tab = it }
             if (tab == 0) Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                FocusSummaryCard(dailyFocus(history.records, java.time.LocalDate.now()), failed = history.failed, loading = history.loading)
                 Box(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(Color(0xFFC96B60), Color(0xFFAD4E47))), RoundedCornerShape(26.dp))) {
                     Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
