@@ -1,6 +1,8 @@
 package com.nexttodo.app
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
@@ -25,6 +27,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.semantics.*
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -179,6 +182,7 @@ private fun TreeParentRow(branch: EventBranch, enabled: Boolean, expanded: Boole
     val done = children.count { it.completed }
     val open = expanded && children.isNotEmpty()
     var menu by remember { mutableStateOf(false) }
+    val arrowRotation by animateFloatAsState(if (expanded) 0f else 90f, tween(180), label = "eventExpandArrow")
     Surface(modifier, color = color, contentColor = ink ?: MaterialTheme.colorScheme.onSurface,
         shape = if (open) RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp) else RoundedCornerShape(20.dp)) {
         Row(Modifier.fillMaxWidth().heightIn(min = 76.dp).drawBehind {
@@ -189,7 +193,18 @@ private fun TreeParentRow(branch: EventBranch, enabled: Boolean, expanded: Boole
                 modifier = Modifier.width(40.dp).semantics {
                     contentDescription = if (children.isEmpty()) "添加子事件 · ${event.title}" else "${if (expanded) "收起" else "展开"}子事件 · ${event.title}"
                 }) {
-                Text(if (children.isEmpty()) "+" else if (expanded) "⌄" else "›", color = ink ?: MaterialTheme.colorScheme.onSurfaceVariant)
+                if (children.isEmpty()) {
+                    Text("+", color = ink ?: MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    Icon(
+                        painter = painterResource(if (expanded) R.drawable.event_expand_blue else R.drawable.event_expand_gray),
+                        contentDescription = null,
+                        tint = if (!expanded && MaterialTheme.colorScheme.background.luminance() < .5f)
+                            ink ?: MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified,
+                        modifier = Modifier.size(16.8.dp).graphicsLayer { rotationZ = arrowRotation }
+                            .alpha(if (enabled) 1f else .38f),
+                    )
+                }
             }
             TriStateCheckbox(state = when {
                 children.isNotEmpty() && done in 1 until children.size -> ToggleableState.Indeterminate
