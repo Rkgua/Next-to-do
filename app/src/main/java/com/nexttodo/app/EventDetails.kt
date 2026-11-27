@@ -62,6 +62,11 @@ internal fun EventDetails(
     modifier: Modifier = Modifier,
     onBack: () -> Unit,
     onEdit: () -> Unit,
+    children: List<Event> = emptyList(),
+    parent: Event? = null,
+    onOpenRelated: (Event) -> Unit = {},
+    onAddChild: (() -> Unit)? = null,
+    onCompleteChild: (Event, Boolean) -> Unit = { _, _ -> },
 ) {
     val colors = MaterialTheme.colorScheme
     val time = event.scheduleLabel().takeIf { it.isNotBlank() }
@@ -146,6 +151,14 @@ internal fun EventDetails(
             }
             if (event.description.isNotBlank()) {
                 DetailCard { DetailValue("描述", event.description) }
+            }
+            parent?.let { value ->
+                DetailCard { TextButton(onClick = { onOpenRelated(value) }) { Text("主事件 · ${value.title}") } }
+            }
+            if (children.isNotEmpty() || onAddChild != null) DetailCard {
+                Text("子事件 · ${children.count { it.completed }}/${children.size}", style = MaterialTheme.typography.titleSmall)
+                children.forEach { child -> EventRow(child, editable, onOpenRelated, onCompleteChild) }
+                onAddChild?.let { add -> TextButton(onClick = add, enabled = editable) { Text("＋ 添加子事件") } }
             }
             if (attributes.isNotEmpty()) {
                 DetailCard {

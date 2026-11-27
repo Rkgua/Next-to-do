@@ -22,7 +22,8 @@ import kotlin.math.roundToInt
 internal fun SwipeEventRow(event: Event, enabled: Boolean, onOpen: (Event) -> Unit,
     onToggle: (Event, Boolean) -> Unit, onPin: (Event) -> Unit, onDelete: (Event) -> Unit,
     modifier: Modifier = Modifier, showHandle: Boolean = false,
-    reorderActions: List<CustomAccessibilityAction> = emptyList(), wallpaperInk: Color? = null) {
+    reorderActions: List<CustomAccessibilityAction> = emptyList(), wallpaperInk: Color? = null,
+    parentTitle: String? = null, containerColor: Color? = null) {
     var offset by remember(event.id, event.occurrenceDate) { mutableStateOf(0f) }
     var dragging by remember { mutableStateOf(false) }
     val width = with(LocalDensity.current) { 144.dp.toPx() }
@@ -50,6 +51,7 @@ internal fun SwipeEventRow(event: Event, enabled: Boolean, onOpen: (Event) -> Un
             }, showHandle = showHandle,
             reorderActions = reorderActions + listOf(
                 CustomAccessibilityAction(if (event.pinned) "取消置顶" else "置顶") { if (enabled) { pin(event); true } else false },
-                CustomAccessibilityAction("删除") { if (enabled) { delete(event); true } else false }), wallpaperInk = wallpaperInk)
+                CustomAccessibilityAction("删除") { if (enabled) { delete(event); true } else false }), wallpaperInk = wallpaperInk,
+            parentTitle = parentTitle, containerColor = containerColor)
     }
 }

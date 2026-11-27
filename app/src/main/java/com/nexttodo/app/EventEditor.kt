@@ -63,6 +63,11 @@ internal fun EventEditor(
     onRecognize: (Attachment) -> Unit,
     onSave: () -> Unit,
     onReset: () -> Unit,
+    children: List<Event> = emptyList(),
+    onChildrenChange: ((List<Event>) -> Unit)? = null,
+    parentTitle: String? = null,
+    saveLabel: String = "保存事件",
+    showRecognition: Boolean = true,
 ) {
     val context = LocalContext.current
     val recognitionPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -73,7 +78,7 @@ internal fun EventEditor(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Surface(
+            if (showRecognition) Surface(
                 onClick = {
                     recognitionPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                 },
@@ -100,6 +105,8 @@ internal fun EventEditor(
                 }
             }
             EditorSection("事件内容", R.drawable.tab_add) {
+                parentTitle?.let { Text("子事件 · $it", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary) }
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     EventType.entries.forEach { type ->
@@ -128,6 +135,11 @@ internal fun EventEditor(
                             onChange(event.copy(fields = event.fields.toMutableList().also { it[index] = updated }))
                         }, {})
                     }
+                }
+            }
+            if (event.parentId == null && onChildrenChange != null) {
+                EditorSection("子事件", R.drawable.tab_add) {
+                    ChildEventsEditor(event, children, enabled, onChildrenChange)
                 }
             }
             EditorSection("时间与提醒", R.drawable.editor_calendar) {
@@ -204,7 +216,7 @@ internal fun EventEditor(
                 Button(onClick = onSave, enabled = enabled,
                     modifier = Modifier.weight(1f).height(52.dp), shape = RoundedCornerShape(16.dp),
                     elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)) {
-                    Text("保存事件", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                    Text(saveLabel, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
                 }
             }
         }
@@ -288,7 +300,7 @@ private fun EditorText(
         value = value,
         onValueChange = onChange,
         label = { Text(label) },
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().testTag("event-field-$label"),
         enabled = enabled,
         singleLine = singleLine,
         minLines = if (singleLine) 1 else 2,

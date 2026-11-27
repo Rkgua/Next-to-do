@@ -20,7 +20,7 @@ internal fun buildLiveSnapshot(now: LocalDateTime, table: Timetable?, events: Li
     val zone = ZoneId.systemDefault()
     val millis = now.atZone(zone).toInstant().toEpochMilli()
     val today = now.toLocalDate()
-    val pending = events.mapNotNull { it.onDate(today, today) }.count { !it.completed }
+    val pending = visibleEventLeaves(events.mapNotNull { it.onDate(today, today) }, events).count { !it.completed }
     val tasks = if (tasksEnabled) "今日还有 $pending 件待办" else ""
     if (timerEnabled && timer != null && (timer.running || timer.remaining < timer.total)) {
         return LiveSnapshot(if (timer.running) "${timer.phase.label}进行中" else "${timer.phase.label}已暂停",

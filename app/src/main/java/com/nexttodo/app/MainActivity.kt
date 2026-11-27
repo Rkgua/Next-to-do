@@ -346,11 +346,14 @@ private fun NextToDo(
                         tab = Tab.ADD
                     },
                     onEnterFocus = { todayFocus = true },
+                    appearance = todayAppearance,
+                    onAddChild = { model.addChild(it); tab = Tab.ADD },
                 )
                 if (todayFocus) TodayFocusScreen(selectedDay, model, timetable, todayAppearance,
                     onDismiss = { todayFocus = false },
                     onOpen = { todayFocus = false; detailId = it.id },
-                    onAdd = { todayFocus = false; model.clearDraft(selectedDay); tab = Tab.ADD })
+                    onAdd = { todayFocus = false; model.clearDraft(selectedDay); tab = Tab.ADD },
+                    onAddChild = { todayFocus = false; model.addChild(it); tab = Tab.ADD })
             }
             return@Scaffold
         }
@@ -386,6 +389,11 @@ private fun NextToDo(
                     detailId = null
                     tab = Tab.ADD
                 },
+                children = model.events.filter { it.parentId == detail.id },
+                parent = model.events.find { it.id == detail.parentId },
+                onOpenRelated = { detailId = it.id },
+                onAddChild = if (detail.parentId == null) ({ model.addChild(detail); detailId = null; tab = Tab.ADD }) else null,
+                onCompleteChild = model::complete,
             )
             return@Scaffold
         }
@@ -409,6 +417,7 @@ private fun NextToDo(
             Spacer(Modifier.height(20.dp))
             Text(
                 when {
+                    model.draft.parentId != null -> if (model.events.any { it.id == model.draft.id }) "编辑子事件" else "添加子事件"
                     tab == Tab.ADD && model.events.any { it.id == model.draft.id } -> "编辑事件"
                     else -> tab.title
                 },
@@ -434,7 +443,9 @@ private fun NextToDo(
                     onChange = model::updateDraft,
                     onRecognize = model::recognizeImage,
                     onSave = model::save,
-                    onReset = { model.clearDraft(selectedDay) },
+                    onReset = { model.resetDraft(selectedDay) },
+                    children = model.draftChildren, onChildrenChange = model::updateDraftChildren,
+                    parentTitle = model.events.find { it.id == model.draft.parentId }?.title,
                 )
                 Tab.PROFILE, Tab.TOMATO -> Unit
             }

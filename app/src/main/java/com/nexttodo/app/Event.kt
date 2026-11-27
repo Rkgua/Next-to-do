@@ -51,6 +51,8 @@ data class Event(
     val completedDates: Set<LocalDate> = emptySet(),
     val pinned: Boolean = false,
     val occurrenceDate: LocalDate? = null,
+    val parentId: String? = null,
+    val followsParentDate: Boolean = false,
 ) {
     val calendarDay: LocalDate?
         get() = time.takeIf(String::isNotBlank)?.let { LocalDateTime.parse(it).toLocalDate() } ?: day
