@@ -139,6 +139,10 @@ internal fun EventDetails(
                     )
                 }
             }
+            if (event.tags.isNotEmpty()) DetailCard {
+                Text("标签", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                EventTagBadges(event.tags)
+            }
             if (time != null || (event.reminderEnabled && !event.completed)) {
                 DetailCard {
                     if (time != null) DetailValue(if (event.time.isBlank()) "日期" else "事件时间", time)

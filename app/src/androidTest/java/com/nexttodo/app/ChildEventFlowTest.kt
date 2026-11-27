@@ -45,10 +45,12 @@ class ChildEventFlowTest {
                 }
             }
             compose.onNodeWithTag("event-field-事件名称").performTextInput(title)
+            compose.onNodeWithTag("event-tag-URGENT").performScrollTo().performClick()
             compose.onNodeWithText("＋ 添加子事件").performScrollTo().performClick()
             compose.onNodeWithText("完成编辑").performSemanticsAction(SemanticsActions.OnClick) { it() }
             compose.onNodeWithText("请输入子事件名称").assertIsDisplayed()
             compose.onNode(hasTestTag("event-field-事件名称") and hasAnyAncestor(isDialog())).performTextInput("准备资料")
+            compose.onNode(hasTestTag("event-tag-NORMAL") and hasAnyAncestor(isDialog())).performScrollTo().performClick()
             compose.onNodeWithText("完成编辑").performSemanticsAction(SemanticsActions.OnClick) { it() }
             compose.waitUntil(5_000) { model.draftChildren.size == 1 }
             compose.onNodeWithText("＋ 添加子事件").performScrollTo().performClick()
@@ -62,6 +64,9 @@ class ChildEventFlowTest {
                 val children = store.readAll().filter { it.parentId == rootId }
                 assertEquals(listOf("准备资料", "完成练习"), children.map { it.title })
                 assertTrue(children.all { it.followsParentDate && it.calendarDay == LocalDate.now() })
+                assertEquals(listOf(EventTag(EventTagKind.URGENT)), store.findEvent(rootId)?.tags)
+                assertEquals(listOf(EventTag(EventTagKind.NORMAL)), children.first().tags)
+                assertTrue(children.last().tags.isEmpty())
             }
             compose.onNodeWithContentDescription("完成状态 · 准备资料").performScrollTo().performClick()
             compose.waitUntil(10_000) { !model.busy && model.events.any { it.id in ids && it.title == "准备资料" && it.completed } }

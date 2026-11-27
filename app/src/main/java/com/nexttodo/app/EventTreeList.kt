@@ -236,6 +236,7 @@ private fun TreeParentRow(branch: EventBranch, enabled: Boolean, expanded: Boole
                         Text("⠿", color = ink ?: MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
+                EventTagBadges(event.tags, Modifier.fillMaxWidth(), alignEnd = true)
             }
         }
     }

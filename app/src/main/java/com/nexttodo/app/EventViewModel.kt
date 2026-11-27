@@ -120,6 +120,7 @@ internal class EventViewModel(application: Application) : AndroidViewModel(appli
         val event = draft.copy(
             title = draft.title.trim(),
             description = draft.description.trim(),
+            tags = draft.tags.normalizedTags(),
             fields = draft.fields.map { it.copy(name = it.name.trim()) }
         )
         if (event.title.isBlank() || event.fields.any { it.name.isBlank() }) {
@@ -128,7 +129,7 @@ internal class EventViewModel(application: Application) : AndroidViewModel(appli
         }
         val previous = events.firstOrNull { it.id == event.id }
         event.validateSchedule()?.let { message = it; return }
-        val children = draftChildren.map { it.copy(title = it.title.trim(), description = it.description.trim()) }
+        val children = draftChildren.map { it.copy(title = it.title.trim(), description = it.description.trim(), tags = it.tags.normalizedTags()) }
         if (children.any { it.title.isBlank() || it.fields.any { field -> field.name.isBlank() } }) {
             message = "请填写子事件名称和属性名称"; return
         }

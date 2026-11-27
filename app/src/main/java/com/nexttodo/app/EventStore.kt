@@ -69,6 +69,15 @@ internal class EventStore(private val context: Context) :
                         day = json.optString("day").takeIf(String::isNotBlank)?.let(LocalDate::parse),
                         parentId = json.optString("parentId").takeIf { it.isNotBlank() && it != "null" },
                         followsParentDate = json.optBoolean("followsParentDate"),
+                        tags = json.optJSONArray("tags")?.let { tags ->
+                            (0 until tags.length()).mapNotNull { index ->
+                                val tag = tags.optJSONObject(index) ?: return@mapNotNull null
+                                val kind = EventTagKind.entries.find { it.name == tag.optString("kind") } ?: return@mapNotNull null
+                                EventTag(kind, tag.optString("name", kind.label),
+                                    if (tag.isNull("color")) null else tag.optInt("color"),
+                                    if (tag.isNull("textColor")) null else tag.optInt("textColor"))
+                            }.normalizedTags()
+                        }.orEmpty(),
                         originalImage = readAttachment(json.optJSONObject("originalImage")),
                         fields = List(fields.length()) { index ->
                             val field = fields.getJSONObject(index)
@@ -212,6 +221,9 @@ internal class EventStore(private val context: Context) :
         .put("completedDates", JSONArray(event.completedDates.map(LocalDate::toString)))
         .put("day", event.day?.toString())
         .put("parentId", event.parentId).put("followsParentDate", event.followsParentDate)
+        .put("tags", JSONArray(event.tags.normalizedTags().map { tag ->
+            JSONObject().put("kind", tag.kind.name).put("name", tag.name).put("color", tag.color).put("textColor", tag.textColor)
+        }))
         .put("originalImage", attachmentJson(event.originalImage))
         .put("fields", JSONArray(event.fields.map { field ->
             JSONObject()

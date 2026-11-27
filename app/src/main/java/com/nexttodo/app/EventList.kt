@@ -296,34 +296,30 @@ internal fun EventRow(
                 modifier = Modifier.semantics { contentDescription = "完成状态 · ${event.title}" },
             )
             Column(
-                Modifier.weight(1f).clickable { onOpen(event) }.padding(vertical = 14.dp, horizontal = 8.dp),
+                Modifier.weight(1f).padding(vertical = 14.dp, horizontal = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Text(
-                    event.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    textDecoration = if (event.completed) TextDecoration.LineThrough else TextDecoration.None,
-                )
-                Text(
-                    listOf(parentTitle?.let { "主事件 · $it" } ?: event.type.label, event.scheduleLabel().takeIf { it.isNotBlank() })
-                        .filterNotNull().joinToString(" · "),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = wallpaperInk?.copy(alpha = .8f) ?: MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            if (showHandle) {
-                val handleColor = MaterialTheme.colorScheme.onSurfaceVariant
-                Box(
-                    Modifier.size(44.dp).semantics { contentDescription = "拖动排序" },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Canvas(Modifier.size(20.dp)) {
-                        for (row in 1..3) {
-                            drawCircle(handleColor, 1.25.dp.toPx(), Offset(size.width * 0.375f, size.height * row / 4f))
-                            drawCircle(handleColor, 1.25.dp.toPx(), Offset(size.width * 0.625f, size.height * row / 4f))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f).clickable { onOpen(event) }, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(event.title, style = MaterialTheme.typography.titleMedium,
+                            textDecoration = if (event.completed) TextDecoration.LineThrough else TextDecoration.None)
+                        Text(listOf(parentTitle?.let { "主事件 · $it" } ?: event.type.label, event.scheduleLabel().takeIf { it.isNotBlank() })
+                            .filterNotNull().joinToString(" · "), style = MaterialTheme.typography.bodySmall,
+                            color = wallpaperInk?.copy(alpha = .8f) ?: MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (showHandle) {
+                        val handleColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        Box(Modifier.size(44.dp).semantics { contentDescription = "拖动排序" }, contentAlignment = Alignment.Center) {
+                            Canvas(Modifier.size(20.dp)) {
+                                for (row in 1..3) {
+                                    drawCircle(handleColor, 1.25.dp.toPx(), Offset(size.width * 0.375f, size.height * row / 4f))
+                                    drawCircle(handleColor, 1.25.dp.toPx(), Offset(size.width * 0.625f, size.height * row / 4f))
+                                }
+                            }
                         }
                     }
                 }
+                EventTagBadges(event.tags, Modifier.fillMaxWidth().padding(end = 6.dp), alignEnd = true)
             }
         }
     }

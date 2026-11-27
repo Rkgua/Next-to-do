@@ -53,6 +53,7 @@ data class Event(
     val occurrenceDate: LocalDate? = null,
     val parentId: String? = null,
     val followsParentDate: Boolean = false,
+    val tags: List<EventTag> = emptyList(),
 ) {
     val calendarDay: LocalDate?
         get() = time.takeIf(String::isNotBlank)?.let { LocalDateTime.parse(it).toLocalDate() } ?: day

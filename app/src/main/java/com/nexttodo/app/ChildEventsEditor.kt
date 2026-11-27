@@ -22,6 +22,7 @@ internal fun ChildEventsEditor(parent: Event, children: List<Event>, enabled: Bo
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f).clickable(enabled) { editing = child }.padding(vertical = 8.dp)) {
                 Text(child.title, style = MaterialTheme.typography.bodyLarge)
+                EventTagBadges(child.tags)
                 Text(if (child.followsParentDate) "跟随主事件日期" else child.scheduleLabel(),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
