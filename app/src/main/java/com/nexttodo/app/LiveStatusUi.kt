@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
 import kotlinx.coroutines.delay
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -74,7 +75,6 @@ internal fun LiveStatusCapsule(onOpen: (String) -> Unit) {
         onDispose { lifecycle?.removeObserver(observer) }
     }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    var expanded by remember { mutableStateOf(false) }
     LaunchedEffect(state.deadline, active) {
         if (active && state.deadline != null) while (true) {
             now = System.currentTimeMillis()
@@ -82,15 +82,26 @@ internal fun LiveStatusCapsule(onOpen: (String) -> Unit) {
             delay(1000)
         }
     }
-    val remaining = state.deadline?.let { ((it - now).coerceAtLeast(0) + 999) / 1000 }
-    val label = remaining?.let { "${state.title} ${it / 60}:${(it % 60).toString().padStart(2, '0')}" } ?: state.title
+    LiveStatusChip(state, now, onOpen)
+}
+
+@Composable
+internal fun LiveStatusChip(state: LiveSnapshot, now: Long, onOpen: (String) -> Unit) {
+    var expanded by remember(state.target) { mutableStateOf(false) }
+    val label = liveCapsuleLabel(state, now)
     Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp), contentAlignment = Alignment.Center) {
         Surface(color = MaterialTheme.colorScheme.inverseSurface, contentColor = MaterialTheme.colorScheme.inverseOnSurface,
             shape = RoundedCornerShape(28.dp), modifier = Modifier.clickable { expanded = true }) {
-            Text(label, Modifier.padding(horizontal = 18.dp, vertical = 9.dp), style = MaterialTheme.typography.labelLarge)
+            Text(label, Modifier.padding(horizontal = 18.dp, vertical = 9.dp), style = MaterialTheme.typography.labelLarge,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
-    if (expanded) AlertDialog(onDismissRequest = { expanded = false }, title = { Text(label) }, text = { Text(state.detail) },
-        confirmButton = { TextButton(onClick = { expanded = false; onOpen(state.target) }) { Text("查看详情") } },
+    if (expanded) AlertDialog(onDismissRequest = { expanded = false }, title = { Text(state.title) }, text = {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (label != state.title) Text(label, style = MaterialTheme.typography.titleMedium)
+            Text(state.detail, style = MaterialTheme.typography.bodyMedium)
+        }
+    },
+        confirmButton = { TextButton(onClick = { expanded = false; onOpen(state.target) }) { Text("详情") } },
         dismissButton = { TextButton(onClick = { expanded = false }) { Text("关闭") } })
 }
