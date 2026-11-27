@@ -16,7 +16,11 @@ private val durationTimeFormat = DateTimeFormatter.ofPattern("yyyy年M月d日 HH
 @Composable
 internal fun EventScheduleEditor(event: Event, enabled: Boolean, onChange: (Event) -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text("持续事件", Modifier.weight(1f))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("持续事件", style = MaterialTheme.typography.bodyLarge)
+            Text("适合跨时段或多日的安排", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         Switch(event.isDuration, { onChange(event.withDuration(it, LocalDateTime.now())) }, enabled = enabled,
             modifier = Modifier.semantics { contentDescription = "切换持续事件" })
     }

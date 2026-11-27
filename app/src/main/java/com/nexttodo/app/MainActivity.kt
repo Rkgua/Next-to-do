@@ -414,7 +414,12 @@ private fun NextToDo(
                 },
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground,
             )
+            Text("把要做的事，安排得井井有条。",
+                modifier = Modifier.padding(top = 6.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(16.dp))
             if (model.loadingFailed) {
                 Button(onClick = model::reload, enabled = !model.busy) { Text("重新读取事件") }
