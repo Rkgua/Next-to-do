@@ -100,6 +100,8 @@ internal fun TodayScreen(
     onOpen: (Event) -> Unit,
     onAdd: () -> Unit,
     onEnterFocus: () -> Unit,
+    appearance: TodayAppearanceViewModel,
+    onAddChild: (Event) -> Unit,
 ) {
     val now = rememberEventNow(model.events)
     val today = now.toLocalDate()
@@ -135,15 +137,10 @@ internal fun TodayScreen(
                     modifier = Modifier.align(Alignment.Center),
                 )
                 else -> key(selectedDay, period) {
-                    EventList(
-                        events = displayed,
-                        enabled = !model.busy,
-                        onOpen = onOpen,
-                        onToggle = model::complete,
-                        onMove = model::moveEvent,
-                        onPin = model::pin, onDelete = model::delete,
+                    TodayEventList(
+                        displayed = displayed, ongoing = ongoing, model = model, appearance = appearance,
+                        onOpen = onOpen, onAddChild = onAddChild,
                         allowReorder = period == TodayPeriod.DAY,
-                        ongoingEvents = ongoing,
                         emptyLabel = when (period) {
                             TodayPeriod.DAY -> "这天暂无待办"
                             TodayPeriod.WEEK -> "本周暂无待办"
@@ -201,7 +198,7 @@ private fun DateSelector(
     val eventCounts = remember(events, period, state.currentPage) {
         (-5..5).map { state.currentPage + it }.filter { it in 0 until period.pageCount }.associateWith { page ->
             val date = period.dateFor(page)
-            periodEvents(events, date, period.end(date)).size
+            visibleEventLeaves(periodEvents(events, date, period.end(date)), events).size
         }
     }
     val context = LocalContext.current

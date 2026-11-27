@@ -73,6 +73,9 @@ internal fun EventList(
     wallpaperInk: Color? = null,
     emptyLabel: String = "这天暂无待办",
     ongoingEvents: List<Event> = emptyList(),
+    confirmDeletion: Boolean = true,
+    showSections: Boolean = true,
+    parentTitles: Map<String, String> = emptyMap(),
 ) {
     if (events.isEmpty() && ongoingEvents.isEmpty()) {
         Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
@@ -109,7 +112,7 @@ internal fun EventList(
 
     fun LazyListScope.eventRows(group: List<Event>, prefix: String = "") {
         items(group, key = { prefix + eventListKey(it) }) { event ->
-            val peers = group.filter { it.pinned == event.pinned }
+            val peers = group.filter { it.pinned == event.pinned && it.parentId == event.parentId }
             val index = peers.indexOf(event)
             val reorderActions = if (enabled && allowReorder) buildList {
                 peers.getOrNull(index - 1)?.let { previous ->
@@ -120,10 +123,11 @@ internal fun EventList(
                 }
             } else emptyList()
             SwipeEventRow(event, enabled, onOpen, onToggle,
-                onPin = onPin, onDelete = { deleting = it },
+                onPin = onPin, onDelete = { if (confirmDeletion) deleting = it else onDelete(it) },
                 modifier = Modifier.animateItem().alpha(if (drag?.event == event) .22f else 1f),
                 showHandle = enabled && allowReorder && peers.size > 1,
-                reorderActions = reorderActions, wallpaperInk = wallpaperInk)
+                reorderActions = reorderActions, wallpaperInk = wallpaperInk,
+                parentTitle = event.parentId?.let(parentTitles::get))
         }
     }
 
@@ -152,7 +156,7 @@ internal fun EventList(
                     } ?: return@awaitEachGesture
                     val group = latestGroups.firstOrNull { it.containsKey(item.key) } ?: return@awaitEachGesture
                     val event = group[item.key] ?: return@awaitEachGesture
-                    val peers = group.filterValues { it.pinned == event.pinned }
+                    val peers = group.filterValues { it.pinned == event.pinned && it.parentId == event.parentId }
                     if (peers.size < 2) return@awaitEachGesture
                     val onHandle = down.position.x >= size.width - 44.dp.toPx()
                     val (start, initialDelta) = if (onHandle) {
@@ -179,7 +183,7 @@ internal fun EventList(
                     if (dropped && current != null) {
                         if (!latestEnabled) return@awaitEachGesture
                         val targets = latestGroups.firstOrNull { it.containsKey(item.key) }
-                            ?.filterValues { it.pinned == current.event.pinned } ?: return@awaitEachGesture
+                            ?.filterValues { it.pinned == current.event.pinned && it.parentId == current.event.parentId } ?: return@awaitEachGesture
                         val target = listState.layoutInfo.visibleItemsInfo
                             .filter { targets.containsKey(it.key) }
                             .minByOrNull { abs(current.center - (it.offset + it.size / 2f)) }
@@ -197,11 +201,11 @@ internal fun EventList(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(bottom = 88.dp),
         ) {
-            if (ongoingEvents.isNotEmpty()) item(key = "long-events-heading") { SectionLabel("长期事件", wallpaperInk) }
+            if (showSections && ongoingEvents.isNotEmpty()) item(key = "long-events-heading") { SectionLabel("长期事件", wallpaperInk) }
             eventRows(ongoing, "long:")
-            if (pending.isNotEmpty()) item { SectionLabel("待完成 · ${pending.size}", wallpaperInk) }
+            if (showSections && pending.isNotEmpty()) item { SectionLabel("待完成 · ${pending.size}", wallpaperInk) }
             eventRows(pending)
-            if (completed.isNotEmpty()) item { SectionLabel("已完成 · ${completed.size}", wallpaperInk) }
+            if (showSections && completed.isNotEmpty()) item { SectionLabel("已完成 · ${completed.size}", wallpaperInk) }
             eventRows(completed)
         }
         drag?.let { current ->
@@ -221,7 +225,7 @@ private data class PendingDrag(val event: Event, val top: Float, val height: Int
     val center: Float get() = top + height / 2f
 }
 
-private suspend fun AwaitPointerEventScope.awaitHandleDrag(
+internal suspend fun AwaitPointerEventScope.awaitHandleDrag(
     down: PointerInputChange,
 ): Pair<PointerInputChange, Float>? {
     while (true) {
@@ -259,6 +263,8 @@ internal fun EventRow(
     dragging: Boolean = false,
     reorderActions: List<CustomAccessibilityAction> = emptyList(),
     wallpaperInk: Color? = null,
+    parentTitle: String? = null,
+    containerColor: Color? = null,
 ) {
     // Wallpaper cards follow their text contrast; other cards follow the app theme.
     val darkCard = wallpaperInk?.let { it.luminance() >= .5f }
@@ -274,7 +280,7 @@ internal fun EventRow(
     }
     Surface(
         modifier = modifier.semantics { customActions = reorderActions },
-        color = cardColor,
+        color = containerColor ?: cardColor,
         contentColor = wallpaperInk ?: MaterialTheme.colorScheme.onSurface,
         shape = MaterialTheme.shapes.large,
         shadowElevation = if (dragging) 8.dp else 0.dp,
@@ -299,7 +305,7 @@ internal fun EventRow(
                     textDecoration = if (event.completed) TextDecoration.LineThrough else TextDecoration.None,
                 )
                 Text(
-                    listOf(event.type.label, event.scheduleLabel().takeIf { it.isNotBlank() })
+                    listOf(parentTitle?.let { "主事件 · $it" } ?: event.type.label, event.scheduleLabel().takeIf { it.isNotBlank() })
                         .filterNotNull().joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall,
                     color = wallpaperInk?.copy(alpha = .8f) ?: MaterialTheme.colorScheme.onSurfaceVariant,

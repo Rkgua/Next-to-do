@@ -58,6 +58,16 @@ internal class TodayAppearanceViewModel(application: Application) : AndroidViewM
         private set
     var sort by mutableStateOf(TodaySort.entries.find { it.name == preferences.getString("sort", null) } ?: TodaySort.MANUAL)
         private set
+    var display by mutableStateOf(EventDisplay.entries.find { it.name == preferences.getString("display", null) } ?: EventDisplay.TREE)
+        private set
+    var filter by mutableStateOf(EventStatusFilter.ALL)
+        private set
+
+    fun changeFilter(value: EventStatusFilter) { filter = value }
+    fun changeDisplay(value: EventDisplay) {
+        if (preferences.edit().putString("display", value.name).commit()) display = value
+        else message = "无法保存显示视图，请重试"
+    }
     var busy by mutableStateOf(false)
         private set
     var message by mutableStateOf("")

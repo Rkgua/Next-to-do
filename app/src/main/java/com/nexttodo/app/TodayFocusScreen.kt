@@ -37,7 +37,8 @@ import java.util.Locale
 
 @Composable
 internal fun TodayFocusScreen(day: LocalDate, events: EventViewModel, timetable: TimetableViewModel,
-    appearance: TodayAppearanceViewModel, onDismiss: () -> Unit, onOpen: (Event) -> Unit, onAdd: () -> Unit) {
+    appearance: TodayAppearanceViewModel, onDismiss: () -> Unit, onOpen: (Event) -> Unit, onAdd: () -> Unit,
+    onAddChild: (Event) -> Unit = {}) {
     var menu by remember { mutableStateOf(false) }
     var sorting by rememberSaveable { mutableStateOf(false) }
     var backgrounds by rememberSaveable { mutableStateOf(false) }
@@ -89,13 +90,11 @@ internal fun TodayFocusScreen(day: LocalDate, events: EventViewModel, timetable:
                         events.loadingFailed -> Button(onClick = events::reload, enabled = !events.busy,
                             modifier = Modifier.padding(20.dp)) { Text("重新读取事件") }
                         events.busy && events.events.isEmpty() -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-                        else -> EventList(
-                            events = appearance.sort.sorted(events.events.mapNotNull { it.onDate(day) }),
-                            enabled = !events.busy, onOpen = onOpen, onToggle = events::complete,
-                            onMove = events::moveEvent, allowReorder = appearance.sort == TodaySort.MANUAL,
-                            onPin = events::pin, onDelete = events::delete,
+                        else -> TodayEventList(
+                            displayed = appearance.sort.sorted(events.events.mapNotNull { it.onDate(day) }),
+                            ongoing = appearance.sort.sorted(ongoing), model = events, appearance = appearance,
+                            onOpen = onOpen, onAddChild = onAddChild, allowReorder = appearance.sort == TodaySort.MANUAL,
                             wallpaperInk = ink,
-                            ongoingEvents = appearance.sort.sorted(ongoing),
                         )
                     }
                     if (!events.loadingFailed) FloatingActionButton(onClick = onAdd,

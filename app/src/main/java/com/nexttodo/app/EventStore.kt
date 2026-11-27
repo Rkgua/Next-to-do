@@ -67,6 +67,8 @@ internal class EventStore(private val context: Context) :
                         completedDates = json.optJSONArray("completedDates")?.let { days -> (0 until days.length()).map { LocalDate.parse(days.getString(it)) }.toSet() }.orEmpty(),
                         pinned = json.optBoolean("pinned"),
                         day = json.optString("day").takeIf(String::isNotBlank)?.let(LocalDate::parse),
+                        parentId = json.optString("parentId").takeIf { it.isNotBlank() && it != "null" },
+                        followsParentDate = json.optBoolean("followsParentDate"),
                         originalImage = readAttachment(json.optJSONObject("originalImage")),
                         fields = List(fields.length()) { index ->
                             val field = fields.getJSONObject(index)
@@ -86,35 +88,56 @@ internal class EventStore(private val context: Context) :
         }
     }
 
-    fun save(event: Event, previous: Event?): Event {
+    fun save(event: Event, previous: Event?): Event = change(listOf(event to previous)).single()
+
+    // Related events commit together, including attachment cleanup after a successful commit.
+    fun change(updates: List<Pair<Event, Event?>>, deleted: List<Event> = emptyList(), order: List<String>? = null): List<Event> {
         val newFiles = mutableListOf<File>()
+        val db = writableDatabase
         val saved = try {
-            val savedEvent = event.copy(
-                originalImage = copyAttachment(event.originalImage, newFiles),
-                fields = event.fields.map { it.copy(attachment = copyAttachment(it.attachment, newFiles)) },
-            )
-            val values = ContentValues().apply {
-                put("completed", savedEvent.completed)
-                put("details", detailsJson(savedEvent).toString())
-            }
-            if (previous == null) {
-                writableDatabase.execSQL(
-                    """
-                    INSERT INTO events (id, completed, details, sort_order)
-                    VALUES (?, ?, ?, (SELECT COALESCE(MIN(sort_order), 0) - 1 FROM events))
-                    """.trimIndent(),
-                    arrayOf(savedEvent.id, if (savedEvent.completed) 1 else 0, values.getAsString("details")),
+            val prepared = updates.map { (event, _) ->
+                event.copy(
+                    originalImage = copyAttachment(event.originalImage, newFiles),
+                    fields = event.fields.map { it.copy(attachment = copyAttachment(it.attachment, newFiles)) },
                 )
-            } else {
-                check(writableDatabase.update("events", values, "id = ?", arrayOf(event.id)) == 1)
             }
-            savedEvent
+            db.beginTransaction()
+            try {
+                prepared.zip(updates).forEach { (savedEvent, original) ->
+                    val values = ContentValues().apply {
+                        put("completed", savedEvent.completed)
+                        put("details", detailsJson(savedEvent).toString())
+                    }
+                    if (original.second == null) {
+                        db.execSQL(
+                            """
+                            INSERT INTO events (id, completed, details, sort_order)
+                            VALUES (?, ?, ?, (SELECT COALESCE(MIN(sort_order), 0) - 1 FROM events))
+                            """.trimIndent(),
+                            arrayOf(savedEvent.id, if (savedEvent.completed) 1 else 0, values.getAsString("details")),
+                        )
+                    } else {
+                        check(db.update("events", values, "id = ?", arrayOf(savedEvent.id)) == 1)
+                    }
+                }
+                deleted.forEach { check(db.delete("events", "id = ?", arrayOf(it.id)) == 1) }
+                val hierarchy = readAll().associateBy { it.id }
+                hierarchy.values.forEach { event -> event.parentId?.let { parentId ->
+                    require(parentId != event.id && hierarchy[parentId]?.parentId == null && hierarchy.containsKey(parentId)) {
+                        "子事件需要关联一个有效的主事件"
+                    }
+                } }
+                if (order != null) saveOrder(order)
+                db.setTransactionSuccessful()
+            } finally { db.endTransaction() }
+            prepared
         } catch (e: Exception) {
             newFiles.forEach { it.delete() }
             throw e
         }
-        val retained = attachmentIds(saved)
-        (attachmentIds(previous) - retained).forEach { File(attachments, it).delete() }
+        val retained = saved.flatMap(::attachmentIds).toSet()
+        val oldFiles = (updates.mapNotNull { it.second } + deleted).flatMap(::attachmentIds).toSet()
+        (oldFiles - retained).forEach { File(attachments, it).delete() }
         return saved
     }
 
@@ -124,8 +147,7 @@ internal class EventStore(private val context: Context) :
     }
 
     fun delete(event: Event) {
-        check(writableDatabase.delete("events", "id = ?", arrayOf(event.id)) == 1)
-        attachmentIds(event).forEach { File(attachments, it).delete() }
+        change(emptyList(), listOf(event))
     }
 
     fun saveOrder(ids: List<String>) {
@@ -189,6 +211,7 @@ internal class EventStore(private val context: Context) :
         .put("repeatWorkDays", event.repeatWorkDays)
         .put("completedDates", JSONArray(event.completedDates.map(LocalDate::toString)))
         .put("day", event.day?.toString())
+        .put("parentId", event.parentId).put("followsParentDate", event.followsParentDate)
         .put("originalImage", attachmentJson(event.originalImage))
         .put("fields", JSONArray(event.fields.map { field ->
             JSONObject()

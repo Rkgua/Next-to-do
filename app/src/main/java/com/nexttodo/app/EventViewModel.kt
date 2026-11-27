@@ -23,6 +23,8 @@ internal class EventViewModel(application: Application) : AndroidViewModel(appli
         private set
     var draft by mutableStateOf(newEvent())
         private set
+    var draftChildren by mutableStateOf<List<Event>>(emptyList())
+        private set
     var busy by mutableStateOf(false)
         private set
     var recognizing by mutableStateOf(false)
@@ -48,12 +50,44 @@ internal class EventViewModel(application: Application) : AndroidViewModel(appli
     }
 
     fun updateDraft(event: Event) {
-        if (!busy) draft = event
+        if (busy) return
+        val dateChanged = event.calendarDay != draft.calendarDay || event.time != draft.time
+        draft = if (event.parentId != null && dateChanged) event.copy(followsParentDate = false) else event
+        if (event.parentId == null) draftChildren = draftChildren.map { child ->
+            if (child.followsParentDate) child.copy(day = event.calendarDay ?: LocalDate.now(),
+                repetition = event.repetition, repeatDays = event.repeatDays,
+                repeatInterval = event.repeatInterval, repeatWorkDays = event.repeatWorkDays) else child
+        }
     }
 
-    fun edit(event: Event) = updateDraft(events.find { it.id == event.id } ?: event)
+    fun edit(event: Event) {
+        if (busy) return
+        draft = events.find { it.id == event.id } ?: event
+        draftChildren = events.filter { it.parentId == event.id }
+    }
 
-    fun clearDraft(day: LocalDate = LocalDate.now()) = updateDraft(newEvent(day))
+    fun clearDraft(day: LocalDate = LocalDate.now()) {
+        if (busy) return
+        draft = newEvent(day)
+        draftChildren = emptyList()
+    }
+
+    fun updateDraftChildren(children: List<Event>) {
+        if (!busy && draft.parentId == null) draftChildren = children.map { it.copy(parentId = draft.id) }
+    }
+
+    fun resetDraft(day: LocalDate) {
+        val parent = events.find { it.id == draft.parentId }
+        if (parent == null) clearDraft(day) else addChild(parent)
+    }
+
+    fun addChild(parent: Event) {
+        if (busy) return
+        val base = events.find { it.id == parent.id } ?: return
+        if (base.parentId != null) return
+        draft = base.newChild()
+        draftChildren = emptyList()
+    }
 
     fun dismissMessage() {
         message = null
@@ -94,30 +128,55 @@ internal class EventViewModel(application: Application) : AndroidViewModel(appli
         }
         val previous = events.firstOrNull { it.id == event.id }
         event.validateSchedule()?.let { message = it; return }
+        val children = draftChildren.map { it.copy(title = it.title.trim(), description = it.description.trim()) }
+        if (children.any { it.title.isBlank() || it.fields.any { field -> field.name.isBlank() } }) {
+            message = "请填写子事件名称和属性名称"; return
+        }
+        children.firstNotNullOfOrNull { it.validateSchedule() }?.let { message = it; return }
+        if (event.parentId != null && events.none { it.id == event.parentId && it.parentId == null }) {
+            message = "主事件已不存在，请重新选择"; return
+        }
         write("无法保存事件，请检查附件后重试") {
-            val saved = withContext(Dispatchers.IO) {
-                store.save(event.copy(completed = if (previous?.repetition == event.repetition) previous.completed else false,
-                    completedDates = if (previous?.repetition == event.repetition) previous.completedDates else emptySet()), previous).also {
-                    runCatching { reminders.update(previous, it) }.onFailure(::logReminderFailure)
+            val updated = event.copy(completed = previous?.completed ?: false,
+                completedDates = if (previous?.repetition == event.repetition) previous.completedDates else emptySet())
+                .withChildProgress(children)
+            val removed = if (event.parentId == null) events.filter { old -> old.parentId == event.id && children.none { it.id == old.id } } else emptyList()
+            val updates = mutableListOf(updated)
+            updates.addAll(children)
+            if (event.parentId != null) {
+                val current = events.filterNot { it.id == event.id } + updated
+                current.find { it.id == event.parentId }?.let { parent ->
+                    updates.add(parent.withChildProgress(current.filter { it.parentId == parent.id }))
                 }
             }
-            events = if (previous == null) listOf(saved) + events
-            else events.map { if (it.id == saved.id) saved else it }
+            val added = updates.filter { value -> events.none { it.id == value.id } }
+            val existing = events.filterNot { old -> removed.any { it.id == old.id } }
+                .map { old -> updates.find { it.id == old.id } ?: old }
+            val next = if (event.parentId != null && previous == null) existing.toMutableList().apply {
+                val lastChild = indexOfLast { it.parentId == event.parentId }
+                val position = if (lastChild >= 0) lastChild + 1 else (indexOfFirst { it.id == event.parentId } + 1).coerceAtLeast(0)
+                addAll(position, added)
+            } else added + existing
+            val saved = withContext(Dispatchers.IO) {
+                store.change(updates.map { value -> value to events.find { it.id == value.id } }, removed, next.map { it.id }).also { values ->
+                    removed.forEach { runCatching { reminders.remove(it) }.onFailure(::logReminderFailure) }
+                    values.forEach { value -> runCatching { reminders.update(events.find { it.id == value.id }, value) }.onFailure(::logReminderFailure) }
+                }
+            }
+            events = next.map { value -> saved.find { it.id == value.id } ?: value }
             draft = newEvent()
-            savedEventId = saved.id
+            draftChildren = emptyList()
+            savedEventId = updated.id
         }
     }
 
     fun complete(event: Event, completed: Boolean) = write("无法更新事件状态") {
-        val base = events.firstOrNull { it.id == event.id } ?: return@write
-        val occurrence = event.occurrenceDate ?: event.occurrenceStart(LocalDate.now()) ?: base.startDay()
-        val updated = if (base.repetition == EventRepeat.NONE) base.copy(completed = completed)
-            else base.copy(completedDates = if (completed) base.completedDates + occurrence else base.completedDates - occurrence)
+        val updates = completionChanges(events, event, completed)
         withContext(Dispatchers.IO) {
-            store.save(updated, base)
-            runCatching { reminders.update(event, updated) }.onFailure(::logReminderFailure)
+            store.change(updates.map { value -> value to events.find { it.id == value.id } })
+            updates.forEach { updated -> runCatching { reminders.update(events.find { it.id == updated.id }, updated) }.onFailure(::logReminderFailure) }
         }
-        events = events.map { if (it.id == event.id) updated else it }
+        events = events.map { old -> updates.find { it.id == old.id } ?: old }
     }
 
     fun pin(event: Event) = write("无法更新置顶状态") {
@@ -127,10 +186,23 @@ internal class EventViewModel(application: Application) : AndroidViewModel(appli
         events = events.map { if (it.id == updated.id) updated else it }
     }
 
-    fun delete(event: Event) = write("无法删除事件") {
+    fun delete(event: Event, keepChildren: Boolean = false) = write("无法删除事件") {
         val base = events.firstOrNull { it.id == event.id } ?: return@write
-        withContext(Dispatchers.IO) { reminders.remove(base); store.delete(base) }
-        events = events.filterNot { it.id == base.id }
+        val children = events.filter { it.parentId == base.id }
+        val deleted = listOf(base) + if (keepChildren) emptyList() else children
+        val updates = if (keepChildren) children.map { it.copy(parentId = null, followsParentDate = false) }.toMutableList()
+            else mutableListOf()
+        base.parentId?.let { id ->
+            val remaining = events.filter { it.parentId == id && it.id != base.id }
+            val parent = events.find { it.id == id }
+            if (parent != null && remaining.isNotEmpty()) updates.add(parent.withChildProgress(remaining))
+        }
+        withContext(Dispatchers.IO) {
+            store.change(updates.map { value -> value to events.find { it.id == value.id } }, deleted)
+            deleted.forEach { runCatching { reminders.remove(it) }.onFailure(::logReminderFailure) }
+            updates.forEach { value -> runCatching { reminders.update(events.find { it.id == value.id }, value) }.onFailure(::logReminderFailure) }
+        }
+        events = events.filterNot { old -> deleted.any { it.id == old.id } }.map { old -> updates.find { it.id == old.id } ?: old }
     }
 
     fun moveEvent(id: String, targetId: String) {
